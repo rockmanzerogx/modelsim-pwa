@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ModelSim - System Dynamics</title>
+    
+    <!-- Script de Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuración de Tailwind para modo 'class' -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    
+    <!-- Script Anti-Flicker: Aplica el tema antes de que se pinte la página -->
+    <script>
+        try {
+            if (localStorage.getItem('modelsim-theme') === 'dark' || 
+               (!('modelsim-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        } catch (_) {}
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1c2327"/> <!-- Color para modo oscuro -->
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/1193d4/ffffff?text=MS">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        canvas#modelCanvas {
+            cursor: default;
+            /* Se gestiona con clases de Tailwind ahora */
+        }
+        .modal {
+            display: none;
+        }
+        .modal.active {
+            display: flex;
+        }
+        /* Clases de botón activo (modo claro/oscuro) */
+        .tool-btn.active {
+            @apply bg-blue-600 text-white;
+        }
+        .tool-btn.active span, .tool-btn.active p {
+             @apply text-white;
+        }
+        
+        /* Ocultar flechas en inputs de tipo number */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+          -webkit-appearance: none; 
+          margin: 0; 
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+        
+        /* Iconos para el select (modo claro/oscuro) */
+        .bg-chevron-down {
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+        .dark .dark\:bg-chevron-down-dark {
+             background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%239DB0B9' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body class="bg-white text-gray-900 dark:bg-[#111618] dark:text-white h-full flex flex-col antialiased">
+
+    <!-- Main Container -->
+    <div class="relative flex h-screen w-full flex-col bg-white dark:bg-[#111618]">
+        <!-- Header -->
+        <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-gray-200 dark:border-b-[#283339] px-10 py-4 flex-shrink-0">
+            <div class="flex items-center gap-4 text-gray-900 dark:text-white">
+                <svg class="h-6 w-6 text-[#1193d4]" fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M44 4H30.6666V17.3334H17.3334V30.6666H4V44H44V4Z" fill="currentColor"></path></svg>
+                <h1 class="text-xl font-bold leading-tight tracking-[-0.015em]">ModelSim</h1>
+                <!-- Espacio para el nombre del modelo -->
+                <div id="currentModelNameDisplay" class="text-gray-500 dark:text-gray-400 font-medium text-sm"></div>
+            </div>
+            <div class="flex items-center gap-3">
+                 <button id="updateModelBtn" class="flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <span class="material-symbols-outlined">save</span>
+                    <span class="truncate">Guardar</span>
+                </button>
+                 <button id="saveAsModelBtn" class="flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
+                    <span class="material-symbols-outlined">save_as</span>
+                    <span class="truncate">Guardar Como...</span>
+                </button>
+                <button id="loadModelBtn" class="flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-[#1193d4] hover:bg-blue-600 text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
+                    <span class="material-symbols-outlined">folder_open</span>
+                    <span class="truncate">Cargar</span>
+                </button>
+                <!-- Botón de Tema -->
+                <button id="themeToggleBtn" class="flex items-center justify-center rounded-md h-10 w-10 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white transition-colors">
+                    <span class="material-symbols-outlined"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Content Grid -->
+        <div class="flex-grow flex overflow-hidden">
+            <div class="grid grid-cols-12 gap-8 w-full p-8 h-full">
+                <!-- Toolbar / Components -->
+                <aside class="col-span-2 flex flex-col gap-6">
+                    <div>
+                        <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] mb-4">Componentes</h2>
+                        <div class="space-y-3">
+                            <div data-tool="select" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
+                                <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">gesture</span></div>
+                                <p class="text-gray-900 dark:text-white text-sm font-medium">Seleccionar</p>
+                            </div>
+                            <div data-tool="stock" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
+                                <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">inventory_2</span></div>
+                                <p class="text-gray-900 dark:text-white text-sm font-medium">Stock</p>
+                            </div>
+                            <div data-tool="flow" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
+                                <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">arrow_right_alt</span></div>
+                                <p class="text-gray-900 dark:text-white text-sm font-medium">Flujo (Tubería)</p>
+                            </div>
+                            <div data-tool="variable" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
+                                <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">monitoring</span></div>
+                                <p class="text-gray-900 dark:text-white text-sm font-medium">Variable</p>
+                            </div>
+                             <div data-tool="link" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
+                                <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">arrow_forward</span></div>
+                                <p class="text-gray-900 dark:text-white text-sm font-medium">Conector (Info)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                     <div class="mt-auto space-y-3">
+                         <button id="runSimBtn" class="w-full flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
+                            <span class="material-symbols-outlined">play_arrow</span>
+                            <span class="truncate">Ejecutar</span>
+                        </button>
+                         <button id="clearCanvasBtn" class="w-full flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
+                            <span class="material-symbols-outlined">delete_sweep</span>
+                            <span class="truncate">Limpiar</span>
+                        </button>
+                    </div>
+                </aside>
+
+                <!-- Modeling Canvas -->
+                <main id="canvas-container" class="col-span-7 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">Modeling Canvas</h2>
+                        
+                        <div class="flex items-center gap-4">
+                            <h2 class="sr-only">Simulación</h2>
+                            <div class="flex items-center gap-2">
+                                <label for="simStartTime" class="block text-sm font-medium text-gray-600 dark:text-gray-300">T. Inicial:</label>
+                                <input type="number" id="simStartTime" value="0" class="form-input flex w-20 min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#283339] h-9 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-3 text-sm font-normal leading-normal">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label for="simEndTime" class="block text-sm font-medium text-gray-600 dark:text-gray-300">T. Final:</label>
+                                <input type="number" id="simEndTime" value="100" class="form-input flex w-20 min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#283339] h-9 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-3 text-sm font-normal leading-normal">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label for="simDt" class="block text-sm font-medium text-gray-600 dark:text-gray-300">DT:</label>
+                                <input type="number" id="simDt" value="1" step="0.1" class="form-input flex w-16 min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#283339] h-9 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-3 text-sm font-normal leading-normal">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="canvasWrapper" class="relative w-full flex-grow bg-gray-50 dark:bg-[#1c2327] rounded-md border border-gray-300 dark:border-[#3b4b54] overflow-hidden">
+                        <canvas id="modelCanvas"></canvas>
+                    </div>
+                </main>
+
+                <!-- Properties Panel -->
+                <aside id="propertiesPanel" class="col-span-3 flex flex-col overflow-hidden">
+                    <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] mb-4">Propiedades</h2>
+                    <div id="propertiesContent" class="bg-gray-50 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] rounded-md p-4 h-[calc(100%-36px)] overflow-y-auto">
+                        <p class="text-gray-500 dark:text-[#9db0b9]">Selecciona un elemento para ver sus propiedades.</p>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="simResultsModal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-[#1c2327] border border-gray-300 dark:border-[#283339] rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[85vh] flex flex-col p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Resultados de la Simulación</h2>
+                <div class="flex items-center gap-3">
+                    <button id="exportCsvBtn" class="flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-9 px-3 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
+                        <span class="material-symbols-outlined text-sm">download</span>
+                        <span class="truncate">Exportar CSV</span>
+                    </button>
+                    <button id="closeSimResultsBtn" class="text-gray-400 hover:text-gray-800 dark:hover:text-white text-3xl leading-none">&times;</button>
+                </div>
+            </div>
+            <!-- Contenido del Modal de Resultados (Gráfica y Paneles) -->
+            <div class="flex-grow flex flex-col gap-4 overflow-hidden">
+                <!-- Gráfica (Mitad superior) -->
+                <div class="w-full h-1/2 relative">
+                    <canvas id="resultsChart"></canvas>
+                </div>
+                <!-- Contenido inferior (Paneles + Tabla) -->
+                <div class="w-full h-1/2 flex flex-col lg:flex-row gap-4 overflow-hidden">
+                    
+                    <!-- Nuevo Panel de Parámetros -->
+                    <div id="comparisonPanel" class="lg:w-2/5 h-full flex flex-col bg-gray-100 dark:bg-[#283339] rounded-md border border-gray-200 dark:border-[#3b4b54] p-4">
+                        <h3 class="font-bold text-gray-900 dark:text-white mb-1">Análisis de Sensibilidad</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Cambia un parámetro y presiona "Ejecutar y Comparar".</p>
+                        
+                        <div id="parameterInputs" class="space-y-3 overflow-y-auto flex-grow pr-2">
+                            <!-- Se generará dinámicamente -->
+                        </div>
+                        
+                        <button id="runComparisonBtn" class="w-full flex items-center justify-center rounded-md h-10 px-4 bg-[#1193d4] hover:bg-blue-600 text-white text-sm font-bold mt-4 flex-shrink-0">
+                            Ejecutar y Comparar
+                        </button>
+                    </div>
+                    
+                    <!-- Tabla de Resultados -->
+                    <div id="resultsTableContainer" class="lg:w-3/5 h-full overflow-auto bg-gray-100 dark:bg-[#283339] rounded-md border border-gray-200 dark:border-[#3b4b54]">
+                        <!-- La tabla de resultados se generará aquí -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="storageModal" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-[#1c2327] border border-gray-300 dark:border-[#283339] rounded-lg shadow-xl w-full max-w-md flex flex-col p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="storageModalTitle" class="text-2xl font-bold text-gray-900 dark:text-white">Guardar/Cargar Modelo</h2>
+                <button id="closeStorageModalBtn" class="text-gray-400 hover:text-gray-800 dark:hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            
+            <!-- Vista de Guardar -->
+            <div id="saveModelView">
+                <div class="mb-4">
+                    <label for="modelNameInput" class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Nombre del Modelo:</label>
+                    <input type="text" id="modelNameInput" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#283339] h-10 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-4 text-sm font-normal leading-normal" placeholder="Ej: Modelo de Población">
+                </div>
+                <button id="confirmSaveBtn" class="w-full flex items-center justify-center rounded-md h-10 px-4 bg-[#1193d4] hover:bg-blue-600 text-white text-sm font-bold mb-3">Guardar en Navegador</button>
+                <button id="exportModelBtn" class="w-full flex items-center justify-center rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold">Exportar a Archivo (.json)</button>
+            </div>
+            
+            <!-- Vista de Cargar -->
+            <div id="loadModelView" class="hidden">
+                
+                <input type="file" id="importFileInput" class="hidden" accept=".json">
+                <label for="importFileInput" class="w-full flex items-center justify-center rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold mb-4 cursor-pointer">
+                    Importar desde Archivo (.json)
+                </label>
+
+                <p class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">O cargar desde el navegador:</p>
+                <div id="savedModelsList" class="bg-gray-100 dark:bg-[#283339] rounded-lg max-h-64 overflow-y-auto">
+                    <!-- List will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensaje de Alerta/Confirmación Personalizado -->
+    <div id="customAlert" class="modal fixed inset-0 bg-black bg-opacity-75 items-center justify-center p-4 z-[100]">
+        <div class="bg-white dark:bg-[#1c2327] border border-gray-300 dark:border-[#283339] rounded-lg shadow-xl w-full max-w-sm flex flex-col p-6">
+            <h3 id="customAlertTitle" class="text-xl font-bold text-gray-900 dark:text-white mb-4">Mensaje</h3>
+            <p id="customAlertMessage" class="text-gray-700 dark:text-gray-300 mb-6">Este es un mensaje de alerta.</p>
+            <div id="customAlertButtons" class="flex justify-end gap-3">
+                <button id="customAlertOk" class="min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-[#1193d4] hover:bg-blue-600 text-white text-sm font-bold">Aceptar</button>
+                <button id="customAlertCancel" class="min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ====================================================== -->
+    <!-- INICIO DEL SCRIPT -->
+    <!-- ====================================================== -->
+    <script>
+    // --- PWA Service Worker Registration ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(registration => console.log('ServiceWorker registration successful'))
+                .catch(err => console.log('ServiceWorker registration failed: ', err));
+        });
+    }
+
+    // --- Funciones de Distribución de Probabilidad ---
+
+    /** Genera un número aleatorio uniforme entre min y max. */
+    function random_uniform(min, max) {
+        return min + (Math.random() * (max - min));
+    }
+
+    /** Genera un número aleatorio con distribución normal (Gaussiana) usando Box-Muller. */
+    function random_normal(mean, stddev) {
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random();
+        while(v === 0) v = Math.random();
+        let z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+        return z * stddev + mean;
+    }
+
+    /** Genera un número aleatorio con distribución exponencial. */
+    function random_exponential(lambda) {
+        return -Math.log(1.0 - Math.random()) / lambda;
+    }
+
+    /** Genera un número aleatorio con distribución de Poisson. */
+    function random_poisson(lambda) {
+        let L = Math.exp(-lambda);
+        let k = 0;
+        let p = 1;
+        do {
+            k++;
+            p *= Math.random();
+        } while (p > L);
+        return k - 1;
+    }
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+        
+        /**
+         * Objeto principal de la aplicación.
+         */
+        const ModelSimApp = {
+            
+            // --- 1. ESTADO DE LA APLICACIÓN ---
+            state: {
+                elements: [], 
+                selectedElement: null, 
+                currentTool: 'select', 
+                isDragging: false, 
+                dragOffsetX: 0, 
+                dragOffsetY: 0, 
+                linkStartElement: null, 
+                resultsChart: null, 
+                db: null, 
+                alertResolve: null, 
+                currentModel: null, 
+                currentTheme: 'dark', // 'light' o 'dark'
+                simulationRuns: [], // Almacena múltiples corridas para comparación
+                parametersForRun: [], // Parámetros modificables para sensibilidad
+            },
+
+            // --- 2. REFERENCIAS AL DOM ---
+            dom: {
+                canvas: document.getElementById('modelCanvas'),
+                ctx: document.getElementById('modelCanvas').getContext('2d'),
+                canvasWrapper: document.getElementById('canvasWrapper'),
+                propertiesContent: document.getElementById('propertiesContent'),
+                runSimBtn: document.getElementById('runSimBtn'),
+                clearCanvasBtn: document.getElementById('clearCanvasBtn'),
+                
+                simResultsModal: document.getElementById('simResultsModal'),
+                closeSimResultsBtn: document.getElementById('closeSimResultsBtn'),
+                exportCsvBtn: document.getElementById('exportCsvBtn'),
+                resultsChartCanvas: document.getElementById('resultsChart'),
+                resultsTableContainer: document.getElementById('resultsTableContainer'),
+                comparisonPanel: document.getElementById('comparisonPanel'),
+                parameterInputs: document.getElementById('parameterInputs'),
+                runComparisonBtn: document.getElementById('runComparisonBtn'),
+
+                storageModal: document.getElementById('storageModal'),
+                closeStorageModalBtn: document.getElementById('closeStorageModalBtn'),
+                storageModalTitle: document.getElementById('storageModalTitle'),
+                updateModelBtn: document.getElementById('updateModelBtn'), 
+                saveAsModelBtn: document.getElementById('saveAsModelBtn'), 
+                loadModelBtn: document.getElementById('loadModelBtn'),
+                saveModelView: document.getElementById('saveModelView'),
+                loadModelView: document.getElementById('loadModelView'),
+                modelNameInput: document.getElementById('modelNameInput'),
+                confirmSaveBtn: document.getElementById('confirmSaveBtn'),
+                exportModelBtn: document.getElementById('exportModelBtn'),
+                importFileInput: document.getElementById('importFileInput'),
+                savedModelsList: document.getElementById('savedModelsList'),
+                
+                currentModelNameDisplay: document.getElementById('currentModelNameDisplay'),
+                themeToggleBtn: document.getElementById('themeToggleBtn'),
+
+                simStartTimeInput: document.getElementById('simStartTime'),
+                simEndTimeInput: document.getElementById('simEndTime'),
+                simDtInput: document.getElementById('simDt'),
+
+                customAlert: document.getElementById('customAlert'),
+                customAlertTitle: document.getElementById('customAlertTitle'),
+                customAlertMessage: document.getElementById('customAlertMessage'),
+                customAlertOk: document.getElementById('customAlertOk'),
+                customAlertCancel: document.getElementById('customAlertCancel'),
+            },
+
+            // --- 3. MÓDULO DE UI ---
+            ui: {
+                init() {
+                    ModelSimApp.dom.runSimBtn.addEventListener('click', () => ModelSimApp.simulation.run());
+                    ModelSimApp.dom.clearCanvasBtn.addEventListener('click', () => ModelSimApp.canvas.clear());
+
+                    document.querySelectorAll('.tool-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            ModelSimApp.state.currentTool = btn.dataset.tool;
+                            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            ModelSimApp.state.linkStartElement = null; 
+                        });
+                    });
+                    document.querySelector('.tool-btn[data-tool="select"]').classList.add('active');
+
+                    ModelSimApp.dom.closeSimResultsBtn.addEventListener('click', () => this.closeModal(ModelSimApp.dom.simResultsModal));
+                    ModelSimApp.dom.exportCsvBtn.addEventListener('click', () => this.exportResultsToCSV());
+                    ModelSimApp.dom.runComparisonBtn.addEventListener('click', () => this.runComparisonSimulation());
+                    ModelSimApp.dom.closeStorageModalBtn.addEventListener('click', () => this.closeModal(ModelSimApp.dom.storageModal));
+
+                    ModelSimApp.dom.customAlertOk.addEventListener('click', () => {
+                        this.closeModal(ModelSimApp.dom.customAlert);
+                        if (ModelSimApp.state.alertResolve) ModelSimApp.state.alertResolve(true);
+                    });
+                    ModelSimApp.dom.customAlertCancel.addEventListener('click', () => {
+                        this.closeModal(ModelSimApp.dom.customAlert);
+                        if (ModelSimApp.state.alertResolve) ModelSimApp.state.alertResolve(false);
+                    });
+                    
+                    // Lógica de Guardar/Cargar
+                    ModelSimApp.dom.updateModelBtn.addEventListener('click', async () => {
+                        const { currentModel, elements } = ModelSimApp.state;
+                        if (!currentModel) {
+                            ModelSimApp.dom.saveAsModelBtn.click();
+                        } else {
+                            try {
+                                await ModelSimApp.storage.updateModel(currentModel.id, currentModel.name, elements);
+                                this.showAlert('Modelo actualizado con éxito!', 'Guardado');
+                                this.updateCurrentModelName();
+                            } catch (error) {
+                                this.showAlert(`Error al actualizar el modelo: ${error.message}`, 'Error');
+                            }
+                        }
+                    });
+                    
+                    ModelSimApp.dom.saveAsModelBtn.addEventListener('click', () => {
+                        ModelSimApp.dom.storageModalTitle.textContent = 'Guardar Modelo Como...';
+                        ModelSimApp.dom.saveModelView.style.display = 'block';
+                        ModelSimApp.dom.loadModelView.style.display = 'none';
+                        ModelSimApp.dom.modelNameInput.value = ModelSimApp.state.currentModel?.name || '';
+                        this.openModal(ModelSimApp.dom.storageModal);
+                    });
+                    
+                    ModelSimApp.dom.loadModelBtn.addEventListener('click', async () => { 
+                        ModelSimApp.dom.storageModalTitle.textContent = 'Cargar Modelo';
+                        ModelSimApp.dom.saveModelView.style.display = 'none';
+                        ModelSimApp.dom.loadModelView.style.display = 'block';
+                        await ModelSimApp.storage.populateSavedModelsList(); 
+                        this.openModal(ModelSimApp.dom.storageModal);
+                    });
+
+                    ModelSimApp.dom.confirmSaveBtn.addEventListener('click', async () => {
+                        const name = ModelSimApp.dom.modelNameInput.value.trim();
+                        if(!name) { 
+                            this.showAlert('Por favor, introduce un nombre para el modelo.', 'Error al Guardar');
+                            return; 
+                        }
+                        try {
+                            const newId = await ModelSimApp.storage.saveModel(name, ModelSimApp.state.elements);
+                            ModelSimApp.state.currentModel = { id: newId, name: name };
+                            ModelSimApp.dom.updateModelBtn.disabled = false;
+                            this.closeModal(ModelSimApp.dom.storageModal);
+                            this.showAlert('Modelo guardado con éxito!', 'Guardado');
+                            this.updateCurrentModelName();
+                        } catch (error) {
+                             this.showAlert(`Error al guardar el modelo: ${error.message}`, 'Error');
+                        }
+                    });
+
+                    // Lógica de Importar/Exportar
+                    ModelSimApp.dom.exportModelBtn.addEventListener('click', () => {
+                        const name = ModelSimApp.dom.modelNameInput.value.trim() || 'modelo_sin_titulo';
+                        const data = ModelSimApp.state.elements;
+                        const fileData = { name: name, data: data };
+                        const jsonString = JSON.stringify(fileData, null, 2);
+                        const blob = new Blob([jsonString], { type: 'application/json' });
+                        
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `${name}.json`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        this.closeModal(ModelSimApp.dom.storageModal);
+                    });
+
+                    ModelSimApp.dom.importFileInput.addEventListener('change', (event) => {
+                        const file = event.target.files[0];
+                        if (!file) return;
+
+                        const reader = new FileReader();
+                        
+                        reader.onload = (e) => {
+                            try {
+                                const text = e.target.result;
+                                const fileData = JSON.parse(text);
+                                
+                                if (!fileData || !Array.isArray(fileData.data)) {
+                                    throw new Error('El archivo no tiene el formato de modelo esperado.');
+                                }
+
+                                ModelSimApp.state.elements = fileData.data;
+                                ModelSimApp.state.selectedElement = null;
+                                ModelSimApp.state.currentModel = null; 
+                                ModelSimApp.dom.updateModelBtn.disabled = true;
+                                ModelSimApp.canvas.draw();
+                                this.closeModal(ModelSimApp.dom.storageModal);
+                                this.showAlert(`Modelo "${fileData.name || 'modelo importado'}" cargado con éxito.`, 'Importación Completa');
+                                this.updateCurrentModelName(); 
+
+                            } catch (err) {
+                                this.showAlert(`Error al importar el archivo: ${err.message}`, 'Error de Importación');
+                            } finally {
+                                event.target.value = null;
+                            }
+                        };
+                        
+                        reader.onerror = () => {
+                            this.showAlert('Error al leer el archivo.', 'Error de Importación');
+                            event.target.value = null;
+                        };
+                        
+                        reader.readAsText(file);
+                    });
+
+                    // Lógica de Tema
+                    this.initTheme();
+                    ModelSimApp.dom.themeToggleBtn.addEventListener('click', () => this.toggleTheme());
+                },
+
+                openModal(modalEl) {
+                    modalEl.classList.add('active');
+                },
+                closeModal(modalEl) {
+                    modalEl.classList.remove('active');
+                },
+
+                showAlert(message, title = "Alerta") {
+                    ModelSimApp.dom.customAlertTitle.textContent = title;
+                    ModelSimApp.dom.customAlertMessage.textContent = message;
+                    ModelSimApp.dom.customAlertOk.style.display = 'block';
+                    ModelSimApp.dom.customAlertCancel.style.display = 'none';
+                    this.openModal(ModelSimApp.dom.customAlert);
+
+                    return new Promise((resolve) => {
+                        ModelSimApp.state.alertResolve = resolve; 
+                    });
+                },
+
+                showConfirm(message, title = "Confirmar") {
+                    ModelSimApp.dom.customAlertTitle.textContent = title;
+                    ModelSimApp.dom.customAlertMessage.textContent = message;
+                    ModelSimApp.dom.customAlertOk.style.display = 'block';
+                    ModelSimApp.dom.customAlertCancel.style.display = 'block';
+                    this.openModal(ModelSimApp.dom.customAlert);
+
+                    return new Promise((resolve) => {
+                        ModelSimApp.state.alertResolve = resolve; 
+                    });
+                },
+
+                initTheme() {
+                    const theme = localStorage.getItem('modelsim-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                    ModelSimApp.state.currentTheme = theme;
+                    this.applyTheme(theme);
+                },
+
+                applyTheme(theme) {
+                    const icon = ModelSimApp.dom.themeToggleBtn.querySelector('span');
+                    if (theme === 'dark') {
+                        document.documentElement.classList.add('dark');
+                        icon.textContent = 'light_mode';
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                        icon.textContent = 'dark_mode';
+                    }
+                    ModelSimApp.state.currentTheme = theme;
+                    localStorage.setItem('modelsim-theme', theme);
+                    
+                    if (ModelSimApp.state.resultsChart && ModelSimApp.dom.simResultsModal.classList.contains('active')) {
+                        this.updateChartTheme();
+                    }
+                    if (ModelSimApp.dom.canvasWrapper) { // Asegurarse de que el canvas exista
+                        ModelSimApp.canvas.updateCanvasBackground();
+                    }
+                },
+
+                toggleTheme() {
+                    const newTheme = ModelSimApp.state.currentTheme === 'light' ? 'dark' : 'light';
+                    this.applyTheme(newTheme);
+                },
+
+                updateCurrentModelName() {
+                    const { currentModel } = ModelSimApp.state;
+                    const { currentModelNameDisplay } = ModelSimApp.dom;
+                    if (currentModel) {
+                        currentModelNameDisplay.textContent = `| ${currentModel.name}`;
+                    } else {
+                        currentModelNameDisplay.textContent = '';
+                    }
+                },
+                
+                updatePropertiesPanel() {
+                    const { selectedElement, elements } = ModelSimApp.state;
+                    const { propertiesContent } = ModelSimApp.dom;
+
+                    if (!selectedElement) {
+                        propertiesContent.innerHTML = `<p class="text-gray-500 dark:text-[#9db0b9]">Selecciona un elemento para ver sus propiedades.</p>`;
+                        return;
+                    }
+
+                    const inputClasses = "form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#283339] h-10 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-4 text-sm font-normal leading-normal";
+                    const labelClasses = "block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1";
+                    const selectClasses = `${inputClasses} appearance-none bg-chevron-down dark:bg-chevron-down-dark`;
+                    const shortcutBtnClasses = "h-8 px-3 rounded-md bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-xs font-medium text-gray-700 dark:text-gray-300";
+                    const functionBtnClasses = `${shortcutBtnClasses} !font-mono !text-blue-500 dark:!text-blue-400`;
+                    
+                    let html = `
+                        <div class="mb-4"><label class="${labelClasses} text-xs text-gray-400 dark:text-gray-500">ID: ${selectedElement.id}</label></div>
+                        <div class="mb-4">
+                            <label for="prop-name" class="${labelClasses}">Nombre</label>
+                            <input type="text" id="prop-name" value="${selectedElement.name}" class="${inputClasses}" ${selectedElement.type === 'link' || selectedElement.type === 'cloud' ? 'disabled' : ''}>
+                        </div>`;
+                    
+                    if (selectedElement.type === 'stock') {
+                        html += `<div class="mb-4">
+                                <label for="prop-value" class="${labelClasses}">Valor Inicial</label>
+                                <input type="number" id="prop-value" value="${selectedElement.value}" class="${inputClasses}">
+                            </div>`;
+                    }
+                    if (['flow', 'variable'].includes(selectedElement.type)) {
+                        html += `<div class="mb-4">
+                                <label for="prop-equation" class="${labelClasses}">Ecuación</label>
+                                <textarea id="prop-equation" class="${inputClasses.replace('h-10','')} h-24 !py-2">${selectedElement.equation}</textarea>
+                            </div>`;
+                        
+                        const currentRounding = selectedElement.rounding || 'decimal';
+                        html += `<div class="mb-4">
+                            <label for="prop-rounding" class="${labelClasses}">Tipo de Resultado</label>
+                            <select id="prop-rounding" class="${selectClasses}">
+                                <option value="decimal" ${currentRounding === 'decimal' ? 'selected' : ''}>Decimal</option>
+                                <option value="entero" ${currentRounding === 'entero' ? 'selected' : ''}>Entero (redondeado)</option>
+                            </select>
+                        </div>`;
+
+                        // Accesos directos de variables
+                        let shortcuts = ModelSimApp.state.elements.filter(el =>
+                            (el.type === 'stock' || el.type === 'variable') &&
+                            el.id !== selectedElement.id
+                        );
+
+                        if (shortcuts.length > 0) {
+                            html += '<div class="mb-4">'; 
+                            html += `<label class="${labelClasses} mb-2">Accesos directos (variables):</label>`;
+                            html += '<div class="flex flex-wrap gap-2">';
+                            shortcuts.forEach(sc => {
+                                html += `<button data-insert="${sc.name}" class="shortcut-btn ${shortcutBtnClasses}">${sc.name}</button>`;
+                            });
+                            html += '</div></div>';
+                        }
+
+                        // Accesos directos de funciones
+                        const functionShortcuts = [
+                            { name: "random()", insert: "random()" },
+                            { name: "uniform(min, max)", insert: "random_uniform( , )" },
+                            { name: "normal(μ, σ)", insert: "random_normal( , )" },
+                            { name: "poisson(λ)", insert: "random_poisson( )" },
+                            { name: "exp(λ)", insert: "random_exponential( )" },
+                            { name: "sqrt(x)", insert: "sqrt( )" },
+                            { name: "pow(x, y)", insert: "pow( , )" }
+                        ];
+                        
+                        html += '<div class="mb-4">'; 
+                        html += `<label class="${labelClasses} mb-2">Funciones rápidas:</label>`;
+                        html += '<div class="flex flex-wrap gap-2">';
+                        functionShortcuts.forEach(fsc => {
+                            html += `<button data-insert="${fsc.insert}" class="shortcut-btn ${functionBtnClasses}">${fsc.name}</button>`;
+                        });
+                        html += '</div></div>';
+                    }
+                    
+                    // **INICIO DE LA CORRECCIÓN: Panel de Propiedades para 'link'**
+                    if (selectedElement.type === 'link') {
+                        // 1. Obtener las listas de nodos válidos
+                        const validFromNodes = elements.filter(e => e.type === 'stock' || e.type === 'variable');
+                        const validToNodes = elements.filter(e => e.type === 'flow' || e.type === 'variable');
+
+                        // 2. Generar las opciones para el select "Desde"
+                        let fromOptions = validFromNodes.map(el => {
+                            const selected = el.id === selectedElement.from ? 'selected' : '';
+                            return `<option value="${el.id}" ${selected}>${el.name} (${el.type})</option>`;
+                        }).join('');
+
+                        // 3. Generar las opciones para el select "Hasta"
+                        let toOptions = validToNodes.map(el => {
+                            const selected = el.id === selectedElement.to ? 'selected' : '';
+                            return `<option value="${el.id}" ${selected}>${el.name} (${el.type})</option>`;
+                        }).join('');
+
+                        // 4. Crear el HTML
+                        html = `
+                            <div class="mb-4"><label class="${labelClasses} text-xs text-gray-400 dark:text-gray-500">ID: ${selectedElement.id}</label></div>
+                            <div class="mb-4">
+                                <label class="${labelClasses}">Tipo</label>
+                                <input type="text" value="Conector (Info)" class="${inputClasses}" disabled>
+                            </div>
+                            <div class="mb-4">
+                                <label for="prop-link-from" class="${labelClasses}">Desde</label>
+                                <select id="prop-link-from" class="${selectClasses}">
+                                    ${fromOptions}
+                                </select>
+                            </div>
+                            <div class="mb-4">
+                                <label for="prop-link-to" class="${labelClasses}">Hasta</label>
+                                <select id="prop-link-to" class="${selectClasses}">
+                                    ${toOptions}
+                                </select>
+                            </div>
+                        `;
+                    }
+                    // **FIN DE LA CORRECCIÓN**
+                    
+                    propertiesContent.innerHTML = html;
+
+                    // Re-asignar listeners a los nuevos inputs
+                    if (document.getElementById('prop-name')) {
+                        document.getElementById('prop-name').addEventListener('input', e => {
+                            if (!ModelSimApp.state.selectedElement || ModelSimApp.state.selectedElement.type === 'link' || ModelSimApp.state.selectedElement.type === 'cloud') return;
+                            const originalName = ModelSimApp.state.selectedElement.name;
+                            const newName = e.target.value.replace(/\s+/g, '_'); 
+                            ModelSimApp.state.selectedElement.name = newName;
+                            
+                             ModelSimApp.state.elements.forEach(el => {
+                                if (el.equation) {
+                                    const regex = new RegExp(`\\b${originalName}\\b`, 'g');
+                                    el.equation = el.equation.replace(regex, newName);
+                                     if(el === ModelSimApp.state.selectedElement && document.getElementById('prop-equation')) {
+                                        document.getElementById('prop-equation').value = el.equation;
+                                    }
+                                }
+                            });
+                            ModelSimApp.canvas.draw(); 
+                        });
+                        document.getElementById('prop-name').addEventListener('change', e => {
+                            if (ModelSimApp.state.selectedElement && ModelSimApp.state.selectedElement.type !== 'link' && ModelSimApp.state.selectedElement.type !== 'cloud') {
+                                e.target.value = ModelSimApp.state.selectedElement.name
+                            }
+                        });
+                    }
+                    if (document.getElementById('prop-value')) {
+                        document.getElementById('prop-value').addEventListener('input', e => ModelSimApp.state.selectedElement.value = e.target.value);
+                    }
+                    if (document.getElementById('prop-equation')) {
+                        document.getElementById('prop-equation').addEventListener('input', e => ModelSimApp.state.selectedElement.equation = e.target.value);
+                    
+                        document.querySelectorAll('.shortcut-btn').forEach(btn => {
+                            btn.addEventListener('click', (e) => {
+                                e.preventDefault(); 
+                                const textToInsert = e.target.dataset.insert;
+                                const textarea = document.getElementById('prop-equation');
+                                
+                                if (!textarea || !textToInsert) return; 
+
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const text = textarea.value;
+                                
+                                const newText = text.substring(0, start) + " " + textToInsert + " " + text.substring(end);
+                                
+                                textarea.value = newText;
+                                
+                                ModelSimApp.state.selectedElement.equation = newText;
+                                
+                                textarea.focus();
+                                textarea.selectionStart = textarea.selectionEnd = start + textToInsert.length + 2; 
+                            });
+                        });
+
+                        document.getElementById('prop-rounding').addEventListener('change', (e) => {
+                            if (ModelSimApp.state.selectedElement) {
+                                ModelSimApp.state.selectedElement.rounding = e.target.value;
+                            }
+                        });
+                    }
+                    
+                    // **INICIO DE LA CORRECCIÓN: Listeners para <select> de 'link'**
+                    if (document.getElementById('prop-link-from')) {
+                        document.getElementById('prop-link-from').addEventListener('change', (e) => {
+                            if (ModelSimApp.state.selectedElement && ModelSimApp.state.selectedElement.type === 'link') {
+                                ModelSimApp.state.selectedElement.from = parseFloat(e.target.value);
+                                ModelSimApp.canvas.draw();
+                            }
+                        });
+                    }
+                    if (document.getElementById('prop-link-to')) {
+                        document.getElementById('prop-link-to').addEventListener('change', (e) => {
+                            if (ModelSimApp.state.selectedElement && ModelSimApp.state.selectedElement.type === 'link') {
+                                ModelSimApp.state.selectedElement.to = parseFloat(e.target.value);
+                                ModelSimApp.canvas.draw();
+                            }
+                        });
+                    }
+                    // **FIN DE LA CORRECCIÓN**
+                },
+
+                getChartOptions() {
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    const textColor = isDark ? '#9db0b9' : '#4b5563';
+                    const gridColor = isDark ? '#283339' : '#e5e7eb';
+                    const legendColor = isDark ? '#e5e7eb' : '#374151';
+
+                    return {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { title: { display: true, text: 'Tiempo', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+                            y: { title: { display: true, text: 'Valor', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
+                        },
+                        plugins: { legend: { labels: { color: legendColor } } }
+                    };
+                },
+
+                displayResults(simulationRuns) { 
+                    if (ModelSimApp.state.resultsChart) ModelSimApp.state.resultsChart.destroy();
+                    
+                    if (!simulationRuns || simulationRuns.length === 0) {
+                        this.showAlert('No hay resultados para mostrar.', 'Error');
+                        return;
+                    }
+
+                    // La tabla muestra solo la ÚLTIMA simulación
+                    const lastRunResults = simulationRuns[simulationRuns.length - 1].results;
+                    ModelSimApp.dom.resultsTableContainer.innerHTML = this.generateResultsTableHTML(lastRunResults);
+                    
+                    // La gráfica muestra TODAS las simulaciones
+                    const baseColors = {};
+                    const datasets = [];
+                    
+                    simulationRuns.forEach((run, runIndex) => {
+                        const results = run.results;
+                        const labels = results.time.map(t => t.toFixed(0)); // Etiquetas de tiempo (eje X)
+                        
+                        Object.keys(results).filter(key => key !== 'time').forEach((key) => {
+                            if (runIndex === 0) { // Primera simulación (base)
+                                baseColors[key] = `hsl(${(Object.keys(baseColors).length * 40) % 360}, 70%, 60%)`;
+                            }
+                            const color = baseColors[key];
+                            
+                            datasets.push({
+                                label: `${key} (Sim ${runIndex + 1})`,
+                                data: results[key],
+                                borderColor: color,
+                                backgroundColor: `${color}33`,
+                                borderDash: (runIndex > 0) ? [5, 5] : undefined, // Línea discontinua para > Sim 1
+                                fill: false,
+                                tension: 0.1,
+                            });
+                        });
+                    });
+
+                    ModelSimApp.state.resultsChart = new Chart(ModelSimApp.dom.resultsChartCanvas, {
+                        type: 'line', 
+                        data: { 
+                            labels: simulationRuns[0].results.time.map(t => t.toFixed(0)), // Usar el tiempo de la primera simulación
+                            datasets: datasets 
+                        },
+                        options: this.getChartOptions()
+                    });
+                    
+                    // Poblar el panel de parámetros de sensibilidad
+                    this.populateParametersPanel(simulationRuns[0].elements);
+                    
+                    this.openModal(ModelSimApp.dom.simResultsModal);
+                },
+
+                populateParametersPanel(elements) {
+                    const { parameterInputs } = ModelSimApp.dom;
+                    parameterInputs.innerHTML = ''; // Limpiar panel
+                    ModelSimApp.state.parametersForRun = []; // Limpiar parámetros
+
+                    const parameters = [];
+                    elements.forEach(el => {
+                        if (el.type === 'stock') {
+                            parameters.push(el);
+                        } else if ((el.type === 'variable' || el.type === 'flow')) {
+                            // Añadir solo si la ecuación es un número constante
+                            if (!isNaN(parseFloat(el.equation)) && isFinite(el.equation)) {
+                                parameters.push(el);
+                            }
+                        }
+                    });
+
+                    ModelSimApp.state.parametersForRun = parameters; // Guardar para la corrida
+                    
+                    if (parameters.length === 0) {
+                        parameterInputs.innerHTML = `<p class="text-sm text-gray-500 dark:text-gray-400">Este modelo no tiene parámetros constantes para modificar (ej. 'Tasa_Interes = 0.1').</p>`;
+                        return;
+                    }
+
+                    const labelClasses = "block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1";
+                    const inputClasses = "form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-[#1193d4] border-gray-300 dark:border-none dark:bg-[#1c2327] h-9 placeholder:text-gray-400 dark:placeholder:text-[#9db0b9] px-3 text-sm font-normal leading-normal";
+
+                    parameters.forEach(el => {
+                        const wrapper = document.createElement('div');
+                        const label = document.createElement('label');
+                        label.className = labelClasses;
+                        label.textContent = `${el.name} (${el.type === 'stock' ? 'Valor Inicial' : 'Ecuación'})`;
+                        
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.step = 'any';
+                        input.dataset.id = el.id;
+                        input.value = (el.type === 'stock') ? el.value : el.equation;
+                        input.className = inputClasses;
+                        
+                        wrapper.appendChild(label);
+                        wrapper.appendChild(input);
+                        parameterInputs.appendChild(wrapper);
+                    });
+                },
+
+                runComparisonSimulation() {
+                    try {
+                        const { simulationRuns } = ModelSimApp.state;
+                        if (simulationRuns.length === 0) {
+                            this.showAlert('No hay una simulación base para comparar.', 'Error');
+                            return;
+                        }
+
+                        // 1. Clonar los elementos de la simulación base (Sim 1)
+                        const baseElements = simulationRuns[0].elements;
+                        const modifiedElements = JSON.parse(JSON.stringify(baseElements));
+                        
+                        // 2. Leer los nuevos valores del panel de parámetros
+                        const newValues = new Map();
+                        ModelSimApp.dom.parameterInputs.querySelectorAll('input').forEach(input => {
+                            newValues.set(input.dataset.id, input.value);
+                        });
+
+                        // 3. Modificar los elementos clonados
+                        modifiedElements.forEach(el => {
+                            // **INICIO DE LA CORRECCIÓN**
+                            // el.id es un NÚMERO, pero input.dataset.id es un STRING.
+                            // Debemos comparar usando el mismo tipo.
+                            const idAsString = String(el.id);
+                            if (newValues.has(idAsString)) { 
+                                if (el.type === 'stock') {
+                                    el.value = newValues.get(idAsString);
+                                } else if (el.type === 'variable' || el.type === 'flow') {
+                                    el.equation = newValues.get(idAsString);
+                                }
+                            }
+                            // **FIN DE LA CORRECCIÓN**
+                        });
+
+                        // 4. Leer parámetros de simulación (T. Inicial, Final, DT)
+                        const startTime = parseFloat(ModelSimApp.dom.simStartTimeInput.value) || 0;
+                        const endTime = parseFloat(ModelSimApp.dom.simEndTimeInput.value) || 100;
+                        const DT = parseFloat(ModelSimApp.dom.simDtInput.value) || 1;
+
+                        // 5. Ejecutar la simulación con los elementos modificados
+                        const results = ModelSimApp.simulation._runLogic(modifiedElements, startTime, endTime, DT);
+                        
+                        // 6. Añadir los nuevos resultados al array de simulaciones
+                        const newRun = {
+                            name: `Sim ${simulationRuns.length + 1}`,
+                            results,
+                            elements: modifiedElements
+                        };
+                        ModelSimApp.state.simulationRuns.push(newRun);
+                        
+                        // 7. Actualizar la gráfica y la tabla
+                        this.displayResults(ModelSimApp.state.simulationRuns);
+
+                    } catch (error) {
+                        this.showAlert(`Error en la simulación de comparación: ${error.message}`, 'Error de Simulación');
+                        console.error(error);
+                    }
+                },
+
+                updateChartTheme() {
+                    if (!ModelSimApp.state.resultsChart) return;
+                    const chart = ModelSimApp.state.resultsChart;
+                    const newOptions = this.getChartOptions();
+                    
+                    chart.options.scales.x = newOptions.scales.x;
+                    chart.options.scales.y = newOptions.scales.y;
+                    chart.options.plugins.legend.labels.color = newOptions.plugins.legend.labels.color;
+                    
+                    chart.update();
+                },
+
+                generateResultsTableHTML(results) {
+                    const headers = Object.keys(results);
+                    if (headers.length === 0) return '<p class="p-4 text-gray-400 dark:text-gray-400">No hay datos para mostrar.</p>';
+
+                    let html = '<table class="w-full text-sm text-left text-gray-700 dark:text-gray-300">';
+                    html += '<thead class="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-200 dark:bg-[#3b4b54] sticky top-0 z-10">';
+                    html += '<tr>';
+                    headers.forEach(h => html += `<th scope="col" class="px-4 py-3">${h}</th>`);
+                    html += '</tr></thead>';
+
+                    html += '<tbody>';
+                    const rowCount = results.time.length;
+                    for (let i = 0; i < rowCount; i++) {
+                        html += `<tr class="border-b border-gray-200 dark:border-[#3b4b54] hover:bg-gray-100 dark:hover:bg-[#3b4b54]/50">`;
+                        headers.forEach(h => {
+                            const value = results[h][i];
+                            let formattedValue;
+                            if (h === 'time') {
+                                formattedValue = typeof value === 'number' ? value.toFixed(0) : value; 
+                            } else {
+                                formattedValue = typeof value === 'number' ? value.toFixed(3) : value; 
+                            }
+                            html += `<td class="px-4 py-2">${formattedValue}</td>`;
+                        });
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table>';
+                    return html;
+                },
+
+                exportResultsToCSV() {
+                    const { simulationRuns } = ModelSimApp.state;
+                    if (!simulationRuns || simulationRuns.length === 0) {
+                        this.showAlert('No hay resultados para exportar.', 'Error');
+                        return;
+                    }
+                    
+                    try {
+                        // 1. Obtener los nombres de las variables (ej. "Poblacion", "Nacimientos")
+                        const baseHeaders = Object.keys(simulationRuns[0].results).filter(h => h !== 'time');
+                        
+                        // 2. Crear los encabezados "anchos"
+                        const wideHeaders = ['Time'];
+                        simulationRuns.forEach((run, index) => {
+                            baseHeaders.forEach(varName => {
+                                wideHeaders.push(`${varName} (Sim ${index + 1})`);
+                            });
+                        });
+                        
+                        let csvContent = wideHeaders.join(',') + '\n';
+                        
+                        // 3. Crear las filas de datos
+                        const rowCount = simulationRuns[0].results.time.length;
+                        
+                        for (let i = 0; i < rowCount; i++) {
+                            const row = [];
+                            // Añadir el tiempo (formateado a 0 decimales)
+                            row.push(simulationRuns[0].results.time[i].toFixed(0));
+                            
+                            // Añadir los datos de cada simulación para esta fila
+                            simulationRuns.forEach(run => {
+                                baseHeaders.forEach(varName => {
+                                    const value = run.results[varName] ? run.results[varName][i] : 'N/A';
+                                    // Formatear a 3 decimales
+                                    row.push(typeof value === 'number' ? value.toFixed(3) : `"${value}"`);
+                                });
+                            });
+                            
+                            csvContent += row.join(',') + '\n';
+                        }
+                        
+                        // 4. Lógica de descarga
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        
+                        const modelName = ModelSimApp.state.currentModel?.name || 'modelo';
+                        link.download = `comparacion_${modelName.replace(/ /g, '_')}.csv`;
+                        
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                    } catch (err) {
+                        this.showAlert(`Error al exportar CSV: ${err.message}`, 'Error');
+                        console.error("Error al exportar CSV:", err);
+                    }
+                }
+            },
+
+            // --- 4. MÓDULO DEL CANVAS ---
+            canvas: {
+                init() {
+                    this.resize(); 
+                    window.addEventListener('resize', this.resize.bind(this));
+                    this.updateCanvasBackground();
+                    
+                    ModelSimApp.dom.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+                    ModelSimApp.dom.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+                    ModelSimApp.dom.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+
+                    document.addEventListener('keydown', (e) => { 
+                        if ((e.key === 'Delete' || e.key === 'Backspace') && ModelSimApp.state.selectedElement) {
+                            const { selectedElement } = ModelSimApp.state;
+                            // Prevenir borrado de texto en inputs
+                            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                            ModelSimApp.state.elements = ModelSimApp.state.elements.filter(el => 
+                                el.id !== selectedElement.id &&
+                                (el.type !== 'link' || (el.from !== selectedElement.id && el.to !== selectedElement.id)) &&
+                                (el.type !== 'flow' || (el.from !== selectedElement.id && el.to !== selectedElement.id))
+                            );
+                            ModelSimApp.state.selectedElement = null;
+                            ModelSimApp.ui.updatePropertiesPanel();
+                            this.draw();
+                        }
+                    });
+                },
+
+                updateCanvasBackground() {
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    const canvas = ModelSimApp.dom.canvasWrapper;
+                    if (isDark) {
+                        canvas.style.backgroundColor = '#1c2327';
+                        canvas.style.backgroundImage = 'radial-gradient(#3b4b54 1px, transparent 1px)';
+                    } else {
+                        canvas.style.backgroundColor = '#f9fafb'; // bg-gray-50
+                        canvas.style.backgroundImage = 'radial-gradient(#d1d5db 1px, transparent 1px)'; //
+                    }
+                    canvas.style.backgroundSize = '16px 16px';
+                    this.draw();
+                },
+
+                resize() {
+                    const container = ModelSimApp.dom.canvas.parentElement;
+                    ModelSimApp.dom.canvas.width = container.offsetWidth;
+                    ModelSimApp.dom.canvas.height = container.offsetHeight;
+                    this.draw(); 
+                },
+
+                onMouseDown(e) {
+                    const { x, y } = this.getMousePos(e);
+                    const clickedElement = this.getElementAtPos(x, y);
+                    const { currentTool } = ModelSimApp.state;
+
+                    if (currentTool === 'select') {
+                        ModelSimApp.state.selectedElement = clickedElement;
+                        // **INICIO DE LA CORRECCIÓN 1: Hacer nubes movibles**
+                        if (clickedElement && clickedElement.type !== 'link') { 
+                        // **FIN DE LA CORRECCIÓN 1**
+                            ModelSimApp.state.isDragging = true;
+                            ModelSimApp.state.dragOffsetX = x - clickedElement.x;
+                            ModelSimApp.state.dragOffsetY = y - clickedElement.y;
+                        }
+                    } else if (currentTool === 'stock') {
+                        const newElement = this.createElement('stock', x, y);
+                        ModelSimApp.state.elements.push(newElement); 
+                        ModelSimApp.state.selectedElement = newElement; 
+                    } else if (currentTool === 'variable') {
+                        const newElement = this.createElement('variable', x, y);
+                        ModelSimApp.state.elements.push(newElement); 
+                        ModelSimApp.state.selectedElement = newElement; 
+                    } else if (currentTool === 'flow') {
+                        const startNode = ModelSimApp.state.linkStartElement;
+                        const endNode = (clickedElement && (clickedElement.type === 'stock' || clickedElement.type === 'cloud')) ? clickedElement : null;
+
+                        if (!startNode) {
+                            if (endNode) { 
+                                ModelSimApp.state.linkStartElement = endNode;
+                            } else { 
+                                const cloud = this.createElement('cloud', x, y);
+                                ModelSimApp.state.elements.push(cloud);
+                                ModelSimApp.state.linkStartElement = cloud;
+                            }
+                        } else {
+                            let targetNode = endNode;
+                            if (!endNode) { 
+                                const cloud = this.createElement('cloud', x, y);
+                                ModelSimApp.state.elements.push(cloud);
+                                targetNode = cloud;
+                            }
+
+                            if (targetNode && startNode.id !== targetNode.id) {
+                                const midX = (startNode.x + targetNode.x) / 2;
+                                const midY = (startNode.y + targetNode.y) / 2;
+                                const newFlow = this.createElement('flow', midX, midY, startNode.id, targetNode.id);
+                                ModelSimApp.state.elements.push(newFlow);
+                                ModelSimApp.state.selectedElement = newFlow;
+                            }
+                            ModelSimApp.state.linkStartElement = null;
+                        }
+                    } else if (currentTool === 'link') {
+                        // Lógica de "desde" para conector de info
+                        if (clickedElement && (clickedElement.type === 'stock' || clickedElement.type === 'variable')) {
+                            if (!ModelSimApp.state.linkStartElement) {
+                                ModelSimApp.state.linkStartElement = clickedElement;
+                            }
+                        // Lógica de "hasta" para conector de info
+                        } else if (ModelSimApp.state.linkStartElement && clickedElement && (clickedElement.type === 'flow' || clickedElement.type === 'variable')) {
+                            if (ModelSimApp.state.linkStartElement !== clickedElement) {
+                                ModelSimApp.state.elements.push({ 
+                                    id: Date.now(), 
+                                    type: 'link', 
+                                    from: ModelSimApp.state.linkStartElement.id, 
+                                    to: clickedElement.id, 
+                                    name: 'link' 
+                                });
+                                ModelSimApp.state.linkStartElement = null; 
+                            }
+                        } else { 
+                            ModelSimApp.state.linkStartElement = null; 
+                        }
+                    }
+                    ModelSimApp.ui.updatePropertiesPanel();
+                    this.draw();
+                },
+
+                onMouseMove(e) {
+                    if (ModelSimApp.state.isDragging && ModelSimApp.state.selectedElement) {
+                        const { x, y } = this.getMousePos(e);
+                        ModelSimApp.state.selectedElement.x = x - ModelSimApp.state.dragOffsetX;
+                        ModelSimApp.state.selectedElement.y = y - ModelSimApp.state.dragOffsetY;
+                        this.draw();
+                    }
+                },
+
+                onMouseUp() {
+                    ModelSimApp.state.isDragging = false;
+                },
+
+                async clear() {
+                    const confirmed = await ModelSimApp.ui.showConfirm('¿Estás seguro de que quieres limpiar el canvas? Esta acción no se puede deshacer.', 'Limpiar Canvas');
+                    if (confirmed) {
+                        ModelSimApp.state.elements = [];
+                        ModelSimApp.state.selectedElement = null;
+                        ModelSimApp.state.currentModel = null;
+                        ModelSimApp.dom.updateModelBtn.disabled = true;
+                        ModelSimApp.ui.updatePropertiesPanel();
+                        ModelSimApp.ui.updateCurrentModelName();
+                        this.draw();
+                    }
+                },
+
+                
+                draw() {
+                    const { ctx, canvas } = ModelSimApp.dom;
+                    const { elements, selectedElement } = ModelSimApp.state;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    elements.filter(e => e.type === 'flow').forEach(flow => this.drawFlowPipe(flow));
+                    elements.filter(e => e.type === 'link').forEach(link => this.drawInfoLink(link));
+                    
+                    elements.filter(e => e.type !== 'link' && e.type !== 'flow').forEach(el => {
+                        ctx.save();
+                        if (el === selectedElement) {
+                            ctx.shadowColor = '#1193d4';
+                            ctx.shadowBlur = 15;
+                        }
+                        if (el.type === 'stock') this.drawStock(el);
+                        else if (el.type === 'variable') this.drawVariable(el);
+                        else if (el.type === 'cloud') this.drawCloud(el);
+                        ctx.restore();
+                    });
+
+                    elements.filter(e => e.type === 'flow').forEach(flow => {
+                         ctx.save();
+                         if (flow === selectedElement) {
+                            ctx.shadowColor = '#1193d4';
+                            ctx.shadowBlur = 15;
+                         }
+                         this.drawFlowValve(flow);
+                         ctx.restore();
+                    });
+                },
+
+                drawStock(el) {
+                    const { ctx } = ModelSimApp.dom;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    ctx.fillStyle = isDark ? '#283339' : '#e5e7eb'; // bg-gray-200
+                    ctx.strokeStyle = isDark ? '#9db0b9' : '#6b7280'; // text-gray-500
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(el.x - 40, el.y - 25, 80, 50);
+                    ctx.fillRect(el.x - 40, el.y - 25, 80, 50);
+                    this.drawText(el.name, el.x, el.y + 40);
+                },
+
+                drawFlowValve(el) {
+                    const { ctx } = ModelSimApp.dom;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    ctx.fillStyle = isDark ? '#283339' : '#e5e7eb';
+                    ctx.strokeStyle = isDark ? '#9db0b9' : '#6b7280';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(el.x, el.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    this.drawText(el.name, el.x, el.y + 25);
+                },
+
+                drawVariable(el) {
+                    const { ctx } = ModelSimApp.dom;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    ctx.fillStyle = 'transparent';
+                    ctx.strokeStyle = isDark ? '#9db0b9' : '#6b7280';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(el.x, el.y, 25, 0, Math.PI * 2);
+                    ctx.stroke();
+                    this.drawText(el.name, el.x, el.y);
+                },
+
+                // **INICIO DE LA CORRECCIÓN 2: Nueva forma de Nube (Círculo + X)**
+                drawCloud(el) {
+                    const { ctx } = ModelSimApp.dom;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    const r = 20; // Radio del círculo
+                    const r_x = r * 0.6; // Tamaño de la 'X' interna
+
+                    // Configuración de estilo (colores según el tema)
+                    ctx.fillStyle = isDark ? '#1c2327' : '#f9fafb';
+                    ctx.strokeStyle = isDark ? '#9db0b9' : '#6b7280'; // text-gray-500
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([]); // Asegurarnos de que no sea punteado
+
+                    // 1. Dibujar el círculo
+                    ctx.beginPath();
+                    ctx.arc(el.x, el.y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // 2. Dibujar la 'X'
+                    ctx.beginPath();
+                    // Línea 1 (\)
+                    ctx.moveTo(el.x - r_x, el.y - r_x);
+                    ctx.lineTo(el.x + r_x, el.y + r_x);
+                    // Línea 2 (/)
+                    ctx.moveTo(el.x + r_x, el.y - r_x);
+                    ctx.lineTo(el.x - r_x, el.y + r_x);
+                    ctx.stroke(); // Dibuja la X con el color de borde
+                },
+                // **FIN DE LA CORRECCIÓN 2**
+
+                drawFlowPipe(flow) {
+                    const { ctx } = ModelSimApp.dom;
+                    const { elements, selectedElement } = ModelSimApp.state;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    const from = elements.find(e => e.id === flow.from);
+                    const to = elements.find(e => e.id === flow.to);
+                    if (!from || !to) return; 
+
+                    const color = isDark ? '#9db0b9' : '#6b7280';
+                    const selectedColor = '#1193d4';
+
+                    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+                    let fromX = from.x, fromY = from.y;
+                    let toX, toY;
+
+                    if (from.type === 'stock') {
+                        const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
+                        let exitX, exitY;
+                        if (Math.abs(dy / dx) < 1 / ratio) { exitX = (dx > 0) ? 40 : -40; exitY = dy * (exitX / dx); }
+                        else { exitY = (dy > 0) ? 25 : -25; exitX = dx * (exitY / dy); }
+                        fromX = from.x + exitX; fromY = from.y + exitY;
+                    } else if (from.type === 'cloud') {
+                        // Ajustado al nuevo radio de 20
+                        fromX = from.x + 20 * Math.cos(angle); fromY = from.y + 20 * Math.sin(angle);
+                    }
+                    
+                    if (to.type === 'stock') {
+                        const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
+                        let exitX, exitY;
+                        if (Math.abs(dy / dx) < 1 / ratio) { exitX = (dx > 0) ? -40 : 40; exitY = dy * (exitX / dx); }
+                        else { exitY = (dy > 0) ? -25 : 25; exitX = dx * (exitY / dy); }
+                        toX = to.x + exitX; toY = to.y + exitY;
+                    } else if (to.type === 'cloud') {
+                        // Ajustado al nuevo radio de 20
+                        toX = to.x - 20 * Math.cos(angle); toY = to.y - 20 * Math.sin(angle);
+                    } else {
+                        toX = to.x - 10 * Math.cos(angle); toY = to.y - 10 * Math.sin(angle);
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(fromX, fromY);
+                    
+                    const valve = {x: flow.x, y: flow.y};
+                    const midX = (fromX + toX) / 2;
+                    const midY = (fromY + toY) / 2;
+                    const c1x = (fromX + midX) / 2;
+                    const c1y = (fromY + midY) / 2;
+                    const c2x = (midX + toX) / 2;
+                    const c2y = (midY + toY) / 2;
+
+                    ctx.quadraticCurveTo(c1x, c1y, valve.x, valve.y);
+                    ctx.quadraticCurveTo(c2x, c2y, toX, toY);
+                    
+                    ctx.strokeStyle = (flow === selectedElement) ? selectedColor : color;
+                    ctx.lineWidth = (flow === selectedElement) ? 5 : 3;
+                    ctx.stroke();
+
+                    ctx.save();
+                    const angleEnd = Math.atan2(toY - c2y, toX - c2x);
+                    ctx.translate(toX, toY);
+                    ctx.rotate(angleEnd);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-12, -6);
+                    ctx.lineTo(-12, 6);
+                    ctx.closePath();
+                    ctx.fillStyle = (flow === selectedElement) ? selectedColor : color;
+                    ctx.fill();
+                    ctx.restore();
+                },
+
+                drawInfoLink(link) {
+                    const { ctx } = ModelSimApp.dom;
+                    const { elements, selectedElement } = ModelSimApp.state;
+                    const from = elements.find(e => e.id === link.from);
+                    const to = elements.find(e => e.id === link.to);
+                    if (!from || !to) return; 
+
+                    const color = '#60a5fa'; // Azul para links de info
+                    const selectedColor = '#1193d4';
+
+                    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+                    let toX, toY;
+
+                    if (to.type === 'stock') {
+                        const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
+                        let exitX, exitY;
+                        if (Math.abs(dy / dx) < 1 / ratio) { exitX = (dx > 0) ? -40 : 40; exitY = dy * (exitX / dx); }
+                        else { exitY = (dy > 0) ? -25 : 25; exitX = dx * (exitY / dy); }
+                        toX = to.x + exitX; toY = to.y + exitY;
+                    } else if (to.type === 'flow' || to.type === 'variable') {
+                        const radius = to.type === 'flow' ? 15 : 25;
+                        toX = to.x - radius * Math.cos(angle);
+                        toY = to.y - radius * Math.sin(angle);
+                    } else {
+                        toX = to.x; toY = to.y;
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(from.x, from.y);
+                    
+                    const midX = (from.x + toX) / 2;
+                    const midY = (from.y + toY) / 2;
+                    const cpX = midX + (from.y - toY) * 0.3;
+                    const cpY = midY + (toX - from.x) * 0.3;
+                    ctx.quadraticCurveTo(cpX, cpY, toX, toY);
+                    
+                    ctx.strokeStyle = (link === selectedElement) ? selectedColor : color;
+                    ctx.lineWidth = (link === selectedElement) ? 2 : 1;
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.save();
+                    const angleEnd = Math.atan2(toY - cpY, toX - cpX);
+                    ctx.translate(toX, toY);
+                    ctx.rotate(angleEnd);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-8, -4);
+                    ctx.lineTo(-8, 4);
+                    ctx.closePath();
+                    ctx.fillStyle = (link === selectedElement) ? selectedColor : color;
+                    ctx.fill();
+                    ctx.restore();
+                },
+
+                drawText(text, x, y) {
+                    const { ctx } = ModelSimApp.dom;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    ctx.fillStyle = isDark ? '#e5e7eb' : '#374151'; // text-gray-700
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = '14px Inter';
+                    ctx.fillText(text, x, y);
+                },
+
+                createElement(type, x, y, fromId = null, toId = null) { 
+                    const baseElement = { id: Date.now(), type, x, y, name: `${type}_${ModelSimApp.state.elements.length + 1}` };
+                    switch (type) {
+                        case 'stock': return { ...baseElement, value: '100', equation: '' };
+                        case 'flow': return { ...baseElement, value: '', equation: '10', from: fromId, to: toId, rounding: 'decimal' };
+                        case 'variable': return { ...baseElement, value: '', equation: '10', rounding: 'decimal' };
+                        case 'cloud': return { id: Date.now(), type, x, y, name: 'cloud' };
+                        default: return null;
+                    }
+                },
+
+                getMousePos(e) { 
+                    const rect = ModelSimApp.dom.canvas.getBoundingClientRect();
+                    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                },
+                
+                getElementAtPos(x, y) { 
+                    const { elements } = ModelSimApp.state;
+                    let clickedElement = null;
+
+                    for (let i = elements.length - 1; i >= 0; i--) {
+                        const el = elements[i];
+                        if (el.type === 'stock' && (x >= el.x - 40 && x <= el.x + 40 && y >= el.y - 25 && y <= el.y + 25)) {
+                            clickedElement = el; break;
+                        } else if (el.type === 'flow' && (Math.sqrt((x - el.x) ** 2 + (y - el.y) ** 2) <= 15)) {
+                            clickedElement = el; break;
+                        } else if (el.type === 'variable' && (Math.sqrt((x - el.x) ** 2 + (y - el.y) ** 2) <= 25)) {
+                            clickedElement = el; break;
+                        // **INICIO DE LA CORRECCIÓN 3: Ajustar radio de clic de nube**
+                        } else if (el.type === 'cloud' && (Math.sqrt((x - el.x) ** 2 + (y - el.y) ** 2) <= 20)) {
+                        // **FIN DE LA CORRECCIÓN 3**
+                            clickedElement = el; break;
+                        }
+                    }
+                    if (clickedElement) return clickedElement; 
+
+                    function distToSegment(px, py, x1, y1, x2, y2) {
+                        const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+                        if (l2 === 0) return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+                        let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+                        t = Math.max(0, Math.min(1, t));
+                        const nearestX = x1 + t * (x2 - x1);
+                        const nearestY = y1 + t * (y2 - y1);
+                        return Math.sqrt((px - nearestX) * (px - nearestX) + (py - nearestY) * (py - nearestY));
+                    }
+
+                    const links = elements.filter(e => e.type === 'link');
+                    for (const link of links) {
+                        const from = elements.find(e => e.id === link.from);
+                        const to = elements.find(e => e.id === link.to);
+                        if (!from || !to) continue;
+                        
+                        const angle = Math.atan2(to.y - from.y, to.x - from.x);
+                        let toX, toY;
+                        if (to.type === 'stock') {
+                            const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
+                            let exitX, exitY;
+                            if (Math.abs(dy / dx) < 1 / ratio) {
+                                exitX = (dx > 0) ? -40 : 40; exitY = dy * (exitX / dx);
+                            } else {
+                                exitY = (dy > 0) ? -25 : 25; exitX = dx * (exitY / dy);
+                            }
+                            toX = to.x + exitX; toY = to.y + exitY;
+                        } else if (to.type === 'flow' || to.type === 'variable') {
+                            const radius = to.type === 'flow' ? 15 : 25;
+                            toX = to.x - radius * Math.cos(angle); toY = to.y - radius * Math.sin(angle);
+                        } else {
+                            toX = to.x; toY = to.y;
+                        }
+                        
+                        if (distToSegment(x, y, from.x, from.y, toX, toY) < 10) { 
+                            clickedElement = link; break;
+                        }
+                    }
+                    return clickedElement;
+                }
+            },
+
+            // --- 5. MÓDULO DE SIMULACIÓN ---
+            simulation: {
+                
+                evalEquation(eq, state) {
+                    try {
+                        let processedEq = eq.replace(/[\n\r]+/g, ' ')
+                                            .replace(/IF\s*(.+?)\s*THEN\s*(.+?)\s*ELSE\s*(.+)/gi, '($1) ? ($2) : ($3)');
+                        
+                        const scope = { 
+                            ...state, 
+                            random: Math.random,
+                            random_uniform: random_uniform,
+                            random_normal: random_normal,
+                            random_exponential: random_exponential,
+                            random_poisson: random_poisson,
+                            sqrt: Math.sqrt,
+                            pow: Math.pow
+                        };
+                        
+                        let result = new Function(...Object.keys(scope), `return ${processedEq};`)(...Object.values(scope));
+                        
+                        if (typeof result === 'boolean') {
+                            return result ? 1 : 0;
+                        }
+                        
+                        return result;
+                    } catch (e) {
+                         throw new Error(`Error evaluando la ecuación "${eq}" con estado ${JSON.stringify(state)}: ${e.message}`);
+                    }
+                },
+
+                findDependencies(equation, elementNames) {
+                    const dependencies = new Set();
+                    const regex = new RegExp(`\\b(${elementNames.join('|')})\\b`, 'g');
+                    let match;
+                    while ((match = regex.exec(equation)) !== null) {
+                        dependencies.add(match[1]);
+                    }
+                    return Array.from(dependencies);
+                },
+
+                determineCalculationOrder(stocks, variables, flows) {
+                    const calcElements = [...variables, ...flows];
+                    const elementMap = new Map();
+                    [...stocks, ...calcElements].forEach(e => elementMap.set(e.name, e));
+                    
+                    const graph = new Map();
+                    const inDegree = new Map();
+
+                    for (const el of calcElements) {
+                        graph.set(el.name, []);
+                        inDegree.set(el.name, 0);
+                    }
+
+                    for (const el of calcElements) {
+                        const dependencies = this.findDependencies(el.equation, Array.from(elementMap.keys()));
+                        for (const depName of dependencies) {
+                            if (graph.has(depName)) { // Si la dependencia es una Variable o Flujo
+                                graph.get(depName).push(el.name);
+                                inDegree.set(el.name, inDegree.get(el.name) + 1);
+                            }
+                        }
+                    }
+
+                    const queue = [];
+                    for (const [name, degree] of inDegree.entries()) {
+                        if (degree === 0) {
+                            queue.push(name);
+                        }
+                    }
+
+                    const sortedList = [];
+                    while (queue.length > 0) {
+                        const name = queue.shift();
+                        sortedList.push(elementMap.get(name));
+                        
+                        for (const neighborName of graph.get(name)) {
+                            inDegree.set(neighborName, inDegree.get(neighborName) - 1);
+                            if (inDegree.get(neighborName) === 0) {
+                                queue.push(neighborName);
+                            }
+                        }
+                    }
+
+                    if (sortedList.length !== calcElements.length) {
+                        const circular = Array.from(inDegree.keys()).filter(k => inDegree.get(k) > 0);
+                        throw new Error(`Dependencia circular detectada. Revisa las ecuaciones de: ${circular.join(', ')}`);
+                    }
+
+                    return sortedList;
+                },
+
+                run() {
+                     try {
+                        const { elements } = ModelSimApp.state;
+                        const startTime = parseFloat(ModelSimApp.dom.simStartTimeInput.value) || 0;
+                        const endTime = parseFloat(ModelSimApp.dom.simEndTimeInput.value) || 100;
+                        const DT = parseFloat(ModelSimApp.dom.simDtInput.value) || 1;
+
+                        if (DT <= 0) throw new Error("El DT (Paso) debe ser un número positivo.");
+                        if (endTime <= startTime) throw new Error("El Tiempo Final debe ser mayor que el Tiempo Inicial.");
+
+                        const results = this._runLogic(elements, startTime, endTime, DT);
+                        
+                        // Reiniciar las simulaciones y añadir la primera
+                        ModelSimApp.state.simulationRuns = [{
+                            name: "Sim 1 (Base)",
+                            results,
+                            elements: JSON.parse(JSON.stringify(elements)) // Guardar una copia
+                        }];
+                        
+                        ModelSimApp.ui.displayResults(ModelSimApp.state.simulationRuns);
+
+                    } catch (error) {
+                        ModelSimApp.ui.showAlert(`Error en la simulación: ${error.message}`, 'Error de Simulación');
+                        console.error(error);
+                    }
+                },
+
+                _runLogic(elements, startTime, endTime, DT) {
+                    const stocks = elements.filter(e => e.type === 'stock');
+                    const flows = elements.filter(e => e.type === 'flow');
+                    const variables = elements.filter(e => e.type === 'variable');
+                    
+                    const calculationOrder = this.determineCalculationOrder(stocks, variables, flows);
+                    
+                    let simState = {};
+                    stocks.forEach(s => simState[s.name] = parseFloat(s.value)); 
+                    variables.forEach(v => simState[v.name] = 0); 
+                    flows.forEach(f => simState[f.name] = 0); 
+                    
+                    const results = { time: [], ...Object.fromEntries(Object.keys(simState).map(k => [k, []])) };
+
+                    for (let t = startTime; t <= endTime; t += DT) {
+                        
+                        const currentStateSnapshot = { ...simState };
+                        
+                        const stateForFlowCalc = { ...currentStateSnapshot };
+                        const stateForResults = { ...currentStateSnapshot };
+                        const flowValues = {};
+
+                        for (const el of calculationOrder) {
+                            let val;
+                            if (el.type === 'variable') {
+                                val = this.evalEquation(el.equation, currentStateSnapshot);
+                                if (el.rounding === 'entero') val = Math.round(val);
+                                stateForFlowCalc[el.name] = val; 
+                                stateForResults[el.name] = val; 
+                            
+                            } else if (el.type === 'flow') {
+                                val = this.evalEquation(el.equation, stateForFlowCalc);
+                                if (el.rounding === 'entero') val = Math.round(val);
+                                flowValues[el.name] = val; 
+                                stateForResults[el.name] = val; 
+                            }
+                        }
+                        
+                        results.time.push(t);
+                        Object.keys(stateForResults).forEach(k => results[k].push(stateForResults[k]));
+
+                        stocks.forEach(s => {
+                            const inflows = flows.filter(f => f.to === s.id);
+                            const outflows = flows.filter(f => f.from === s.id);
+                            
+                            let totalInflow = inflows.reduce((sum, f) => sum + (flowValues[f.name] || 0), 0);
+                            let totalOutflow = outflows.reduce((sum, f) => sum + (flowValues[f.name] || 0), 0);
+                            
+                            simState[s.name] += (totalInflow - totalOutflow) * DT;
+                        });
+                    }
+                    return results;
+                }
+            },
+
+            // --- 6. MÓDULO DE ALMACENAMIENTO ---
+            storage: {
+                DB_NAME: 'SystemDynamicsDB',
+                STORE_NAME: 'models',
+                
+                initDB() { 
+                    return new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.DB_NAME, 1);
+                        request.onerror = event => reject('Error opening DB');
+                        request.onsuccess = event => {
+                            ModelSimApp.state.db = event.target.result; 
+                            resolve(event.target.result);
+                        };
+                        request.onupgradeneeded = event => {
+                            const db = event.target.result;
+                            db.createObjectStore(this.STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        };
+                    });
+                },
+
+                saveModel(name, data) {
+                    return new Promise((resolve, reject) => {
+                        const { db } = ModelSimApp.state;
+                        if (!db) return reject("La base de datos no está inicializada.");
+                        
+                        const transaction = db.transaction([this.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        const request = store.add({ name, data: JSON.stringify(data) });
+                        request.onsuccess = () => resolve(request.result); 
+                        request.onerror = event => reject(event.target.error);
+                    });
+                },
+
+                updateModel(id, name, data) {
+                    return new Promise((resolve, reject) => {
+                        const { db } = ModelSimApp.state;
+                        if (!db) return reject("La base de datos no está inicializada.");
+                        
+                        const transaction = db.transaction([this.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        const request = store.put({ id: id, name: name, data: JSON.stringify(data) }); 
+                        request.onsuccess = () => resolve();
+                        request.onerror = event => reject(event.target.error);
+                    });
+                },
+
+                getModels() { 
+                    return new Promise((resolve, reject) => {
+                        const { db } = ModelSimApp.state;
+                        if (!db) return reject("La base de datos no está inicializada.");
+
+                        const transaction = db.transaction([this.STORE_NAME], 'readonly');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        const request = store.getAll();
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = event => reject(event.target.error);
+                    });
+                },
+                
+                deleteModel(id) {
+                     return new Promise((resolve, reject) => {
+                        const { db } = ModelSimApp.state;
+                        if (!db) return reject("La base de datos no está inicializada.");
+
+                        const transaction = db.transaction([this.STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(this.STORE_NAME);
+                        const request = store.delete(id);
+                        request.onsuccess = () => resolve();
+                        request.onerror = event => reject(event.target.error);
+                    });
+                },
+
+                async populateSavedModelsList() {
+                    try {
+                        const models = await this.getModels();
+                        const { savedModelsList } = ModelSimApp.dom;
+                        savedModelsList.innerHTML = '';
+
+                        if (models.length === 0) {
+                            savedModelsList.innerHTML = `<p class="p-4 text-gray-500 dark:text-gray-400">No hay modelos guardados.</p>`;
+                            return;
+                        }
+                        
+                        models.forEach(model => {
+                            const modelEl = document.createElement('div');
+                            modelEl.className = 'p-3 border-b border-gray-200 dark:border-[#3b4b54] flex justify-between items-center hover:bg-gray-200 dark:hover:bg-[#3b4b54] cursor-pointer text-gray-900 dark:text-white';
+                            modelEl.innerHTML = `<span>${model.name}</span>`;
+                            
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.innerHTML = `&times;`;
+                            deleteBtn.className = 'text-red-500 hover:text-red-400 font-bold px-2 text-xl';
+                            deleteBtn.onclick = async (e) => {
+                                e.stopPropagation(); 
+                                const confirmed = await ModelSimApp.ui.showConfirm(`¿Seguro que quieres borrar el modelo "${model.name}"?`, 'Confirmar Borrado');
+                                if(confirmed){
+                                    await this.deleteModel(model.id);
+                                    this.populateSavedModelsList(); 
+                                }
+                            };
+                            modelEl.appendChild(deleteBtn);
+                            
+                            modelEl.onclick = () => {
+                                ModelSimApp.state.elements = JSON.parse(model.data);
+                                ModelSimApp.state.selectedElement = null;
+                                ModelSimApp.state.currentModel = { id: model.id, name: model.name };
+                                ModelSimApp.dom.updateModelBtn.disabled = false;
+                                ModelSimApp.ui.closeModal(ModelSimApp.dom.storageModal);
+                                ModelSimApp.ui.updatePropertiesPanel();
+                                ModelSimApp.ui.updateCurrentModelName();
+                                ModelSimApp.canvas.draw();
+                            };
+                            savedModelsList.appendChild(modelEl);
+                        });
+                    } catch (error) {
+                        ModelSimApp.ui.showAlert(`Error al cargar modelos: ${error.message}`, 'Error');
+                    }
+                }
+            },
+
+            // --- 7. INICIALIZACIÓN PRINCIPAL ---
+            async init() {
+                try {
+                    await this.storage.initDB();
+                    this.ui.init();
+                    this.canvas.init();
+                    
+                    console.log("ModelSim App Inicializada (Versión Modularizada)");
+
+                } catch (error) {
+                    console.error("Error al inicializar la aplicación:", error);
+                    ModelSimApp.ui.showAlert("Error crítico al iniciar. Es posible que la app no funcione correctamente.", "Error de Inicialización");
+                }
+            }
+        };
+
+        ModelSimApp.init();
+        
+    });
+    </script>
+</body>
+</html>
