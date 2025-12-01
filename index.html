@@ -39,8 +39,14 @@
             font-family: 'Inter', sans-serif;
         }
         canvas#modelCanvas {
+            cursor: grab; /* Cursor por defecto para indicar que se puede mover */
+        }
+        canvas#modelCanvas:active {
+            cursor: grabbing;
+        }
+        /* Cuando estamos dibujando o seleccionando, forzamos el cursor default */
+        canvas#modelCanvas.interacting {
             cursor: default;
-            /* Se gestiona con clases de Tailwind ahora */
         }
         .modal {
             display: none;
@@ -48,12 +54,30 @@
         .modal.active {
             display: flex;
         }
-        /* Clases de botón activo (modo claro/oscuro) */
-        .tool-btn.active {
-            @apply bg-blue-600 text-white;
+        
+        /* --- MEJORA DE UX: ESTILOS DE BOTÓN ACTIVO --- */
+        .tool-btn {
+            @apply transition-all duration-200 ease-in-out; /* Suavizar transiciones */
         }
-        .tool-btn.active span, .tool-btn.active p {
-             @apply text-white;
+        
+        /* Estado Activo: Fondo Azul Sólido + Texto Blanco */
+        .tool-btn.active {
+            @apply bg-[#1193d4] border-transparent shadow-md scale-[1.02]; 
+            /* Fondo azul marca, sin borde gris, pequeña sombra y ligero aumento de tamaño */
+        }
+        
+        /* Forzar color blanco en hijos cuando está activo */
+        .tool-btn.active p {
+             @apply text-white font-semibold;
+        }
+        
+        /* El contenedor del icono también se adapta */
+        .tool-btn.active div {
+            @apply bg-white/20 text-white; /* Fondo semitransparente blanco para el icono */
+        }
+        
+        .tool-btn.active span {
+            @apply text-white; /* Icono blanco */
         }
         
         /* Ocultar flechas en inputs de tipo number */
@@ -75,6 +99,21 @@
         }
         .dark .dark\:bg-chevron-down-dark {
              background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%239DB0B9' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+        }
+        
+        /* Scrollbar personalizado para listas internas */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* gray-300 */
+            border-radius: 20px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #3b4b54;
         }
     </style>
 </head>
@@ -114,10 +153,12 @@
         <div class="flex-grow flex overflow-hidden">
             <div class="grid grid-cols-12 gap-8 w-full p-8 h-full">
                 <!-- Toolbar / Components -->
-                <aside class="col-span-2 flex flex-col gap-6">
-                    <div>
-                        <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] mb-4">Componentes</h2>
-                        <div class="space-y-3">
+                <aside class="col-span-2 flex flex-col h-full max-h-full overflow-hidden">
+                    
+                    <!-- Lista de Componentes con Scroll Independiente -->
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                        <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] mb-4 sticky top-0 bg-white dark:bg-[#111618] z-10 py-2">Componentes</h2>
+                        <div class="space-y-3 pb-4">
                             <div data-tool="select" class="tool-btn flex items-center gap-3 p-3 rounded-md bg-gray-100 dark:bg-[#1c2327] border border-gray-200 dark:border-[#283339] hover:border-blue-500 dark:hover:border-[#1193d4] cursor-pointer transition-colors">
                                 <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">gesture</span></div>
                                 <p class="text-gray-900 dark:text-white text-sm font-medium">Seleccionar</p>
@@ -138,10 +179,16 @@
                                 <div class="bg-gray-200 dark:bg-[#283339] p-2 rounded-full"><span class="material-symbols-outlined text-gray-500 dark:text-gray-400">arrow_forward</span></div>
                                 <p class="text-gray-900 dark:text-white text-sm font-medium">Conector (Info)</p>
                             </div>
+                            <!-- Botón de Borrar Elemento (Solo visible en Móvil lg:hidden) -->
+                            <div id="deleteElementBtn" class="lg:hidden flex items-center gap-3 p-3 rounded-md bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:border-red-500 cursor-pointer transition-colors text-red-700 dark:text-red-400">
+                                <div class="bg-red-200 dark:bg-red-900/40 p-2 rounded-full"><span class="material-symbols-outlined">delete</span></div>
+                                <p class="text-sm font-medium">Borrar Elemento</p>
+                            </div>
                         </div>
                     </div>
 
-                     <div class="mt-auto space-y-3">
+                    <!-- Botones Fijos al Pie -->
+                     <div class="pt-4 border-t border-gray-200 dark:border-[#283339] bg-white dark:bg-[#111618] z-20 space-y-3">
                          <button id="runSimBtn" class="w-full flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors">
                             <span class="material-symbols-outlined">play_arrow</span>
                             <span class="truncate">Ejecutar</span>
@@ -177,6 +224,10 @@
                     
                     <div id="canvasWrapper" class="relative w-full flex-grow bg-gray-50 dark:bg-[#1c2327] rounded-md border border-gray-300 dark:border-[#3b4b54] overflow-hidden">
                         <canvas id="modelCanvas"></canvas>
+                        <!-- Botón Reset View -->
+                        <button id="resetViewBtn" class="absolute top-4 right-4 p-2 bg-white dark:bg-[#283339] rounded-md shadow-md border border-gray-200 dark:border-[#3b4b54] hover:bg-gray-50 dark:hover:bg-[#3b4b54] text-gray-600 dark:text-gray-300 transition-colors z-10" title="Centrar Vista">
+                            <span class="material-symbols-outlined text-xl">center_focus_strong</span>
+                        </button>
                     </div>
                 </main>
 
@@ -352,6 +403,15 @@
                 currentTheme: 'dark', // 'light' o 'dark'
                 simulationRuns: [], // Almacena múltiples corridas para comparación
                 parametersForRun: [], // Parámetros modificables para sensibilidad
+                // ESTADO PARA ZOOM Y PANNING
+                view: {
+                    scale: 1,
+                    offsetX: 0,
+                    offsetY: 0,
+                    isPanning: false,
+                    startPanX: 0,
+                    startPanY: 0
+                }
             },
 
             // --- 2. REFERENCIAS AL DOM ---
@@ -362,6 +422,8 @@
                 propertiesContent: document.getElementById('propertiesContent'),
                 runSimBtn: document.getElementById('runSimBtn'),
                 clearCanvasBtn: document.getElementById('clearCanvasBtn'),
+                resetViewBtn: document.getElementById('resetViewBtn'),
+                deleteElementBtn: document.getElementById('deleteElementBtn'), // Botón para borrar en móvil
                 
                 simResultsModal: document.getElementById('simResultsModal'),
                 closeSimResultsBtn: document.getElementById('closeSimResultsBtn'),
@@ -405,6 +467,18 @@
                 init() {
                     ModelSimApp.dom.runSimBtn.addEventListener('click', () => ModelSimApp.simulation.run());
                     ModelSimApp.dom.clearCanvasBtn.addEventListener('click', () => ModelSimApp.canvas.clear());
+                    ModelSimApp.dom.resetViewBtn.addEventListener('click', () => ModelSimApp.canvas.resetView());
+                    
+                    // Lógica para el botón "Borrar Elemento" en móvil
+                    if(ModelSimApp.dom.deleteElementBtn) {
+                        ModelSimApp.dom.deleteElementBtn.addEventListener('click', () => {
+                            if (ModelSimApp.state.selectedElement) {
+                                ModelSimApp.canvas.deleteSelectedElement();
+                            } else {
+                                this.showAlert('No hay ningún elemento seleccionado para borrar.', 'Aviso');
+                            }
+                        });
+                    }
 
                     document.querySelectorAll('.tool-btn').forEach(btn => {
                         btn.addEventListener('click', () => {
@@ -437,7 +511,13 @@
                             ModelSimApp.dom.saveAsModelBtn.click();
                         } else {
                             try {
-                                await ModelSimApp.storage.updateModel(currentModel.id, currentModel.name, elements);
+                                // Capturar configuración de simulación
+                                const settings = {
+                                    startTime: ModelSimApp.dom.simStartTimeInput.value,
+                                    endTime: ModelSimApp.dom.simEndTimeInput.value,
+                                    dt: ModelSimApp.dom.simDtInput.value
+                                };
+                                await ModelSimApp.storage.updateModel(currentModel.id, currentModel.name, elements, settings);
                                 this.showAlert('Modelo actualizado con éxito!', 'Guardado');
                                 this.updateCurrentModelName();
                             } catch (error) {
@@ -469,7 +549,13 @@
                             return; 
                         }
                         try {
-                            const newId = await ModelSimApp.storage.saveModel(name, ModelSimApp.state.elements);
+                            // Capturar configuración de simulación
+                            const settings = {
+                                startTime: ModelSimApp.dom.simStartTimeInput.value,
+                                endTime: ModelSimApp.dom.simEndTimeInput.value,
+                                dt: ModelSimApp.dom.simDtInput.value
+                            };
+                            const newId = await ModelSimApp.storage.saveModel(name, ModelSimApp.state.elements, settings);
                             ModelSimApp.state.currentModel = { id: newId, name: name };
                             ModelSimApp.dom.updateModelBtn.disabled = false;
                             this.closeModal(ModelSimApp.dom.storageModal);
@@ -484,7 +570,21 @@
                     ModelSimApp.dom.exportModelBtn.addEventListener('click', () => {
                         const name = ModelSimApp.dom.modelNameInput.value.trim() || 'modelo_sin_titulo';
                         const data = ModelSimApp.state.elements;
-                        const fileData = { name: name, data: data };
+                        
+                        // Capturar configuración de simulación
+                        const settings = {
+                            startTime: ModelSimApp.dom.simStartTimeInput.value,
+                            endTime: ModelSimApp.dom.simEndTimeInput.value,
+                            dt: ModelSimApp.dom.simDtInput.value
+                        };
+                        
+                        // Estructura JSON actualizada
+                        const fileData = { 
+                            name: name, 
+                            data: data,
+                            settings: settings 
+                        };
+                        
                         const jsonString = JSON.stringify(fileData, null, 2);
                         const blob = new Blob([jsonString], { type: 'application/json' });
                         
@@ -514,6 +614,14 @@
                                 }
 
                                 ModelSimApp.state.elements = fileData.data;
+                                
+                                // Cargar configuración si existe
+                                if (fileData.settings) {
+                                    if (fileData.settings.startTime !== undefined) ModelSimApp.dom.simStartTimeInput.value = fileData.settings.startTime;
+                                    if (fileData.settings.endTime !== undefined) ModelSimApp.dom.simEndTimeInput.value = fileData.settings.endTime;
+                                    if (fileData.settings.dt !== undefined) ModelSimApp.dom.simDtInput.value = fileData.settings.dt;
+                                }
+
                                 ModelSimApp.state.selectedElement = null;
                                 ModelSimApp.state.currentModel = null; 
                                 ModelSimApp.dom.updateModelBtn.disabled = true;
@@ -627,6 +735,7 @@
                     const labelClasses = "block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1";
                     const selectClasses = `${inputClasses} appearance-none bg-chevron-down dark:bg-chevron-down-dark`;
                     const shortcutBtnClasses = "h-8 px-3 rounded-md bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-xs font-medium text-gray-700 dark:text-gray-300";
+                    const connectedBtnClasses = "h-8 px-3 rounded-md bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800 text-xs font-medium";
                     const functionBtnClasses = `${shortcutBtnClasses} !font-mono !text-blue-500 dark:!text-blue-400`;
                     
                     let html = `
@@ -657,18 +766,47 @@
                             </select>
                         </div>`;
 
-                        // Accesos directos de variables
-                        let shortcuts = ModelSimApp.state.elements.filter(el =>
-                            (el.type === 'stock' || el.type === 'variable') &&
-                            el.id !== selectedElement.id
+                        // --- MEJORA: Separación de Variables Conectadas vs No Conectadas ---
+                        
+                        // 1. Identificar fuentes conectadas visualmente
+                        const connectedSourceIds = new Set(
+                            elements
+                            .filter(l => l.type === 'link' && l.to === selectedElement.id)
+                            .map(l => l.from)
                         );
 
-                        if (shortcuts.length > 0) {
+                        // 2. Filtrar listas (CORRECCIÓN: AÑADIR 'FLOW' A LOS FILTROS)
+                        const connectedVars = elements.filter(el => 
+                            (el.type === 'stock' || el.type === 'variable' || el.type === 'flow') && 
+                            connectedSourceIds.has(el.id)
+                        );
+
+                        const unconnectedVars = elements.filter(el =>
+                            (el.type === 'stock' || el.type === 'variable' || el.type === 'flow') &&
+                            el.id !== selectedElement.id &&
+                            !connectedSourceIds.has(el.id)
+                        );
+
+                        // 3. Renderizar "Variables Conectadas (Disponibles)"
+                        if (connectedVars.length > 0) {
                             html += '<div class="mb-4">'; 
-                            html += `<label class="${labelClasses} mb-2">Accesos directos (variables):</label>`;
+                            html += `<label class="${labelClasses} mb-2 text-blue-600 dark:text-blue-400">Variables Conectadas (Disponibles):</label>`;
                             html += '<div class="flex flex-wrap gap-2">';
-                            shortcuts.forEach(sc => {
-                                html += `<button data-insert="${sc.name}" class="shortcut-btn ${shortcutBtnClasses}">${sc.name}</button>`;
+                            connectedVars.forEach(sc => {
+                                html += `<button data-insert="${sc.name}" class="shortcut-btn ${connectedBtnClasses}" title="Variable conectada y lista para usar">${sc.name}</button>`;
+                            });
+                            html += '</div></div>';
+                        } else {
+                             html += `<div class="mb-4"><p class="text-xs text-gray-400 italic">No hay variables conectadas. Usa la herramienta "Conector" para enlazar variables aquí.</p></div>`;
+                        }
+
+                        // 4. Renderizar "Otras Variables"
+                        if (unconnectedVars.length > 0) {
+                            html += '<div class="mb-4">'; 
+                            html += `<label class="${labelClasses} mb-2 text-gray-500">Otras Variables (Requieren Conector):</label>`;
+                            html += '<div class="flex flex-wrap gap-2">';
+                            unconnectedVars.forEach(sc => {
+                                html += `<button data-insert="${sc.name}" class="shortcut-btn ${shortcutBtnClasses}" title="Advertencia: Recuerda conectar esta variable visualmente">${sc.name}</button>`;
                             });
                             html += '</div></div>';
                         }
@@ -696,7 +834,8 @@
                     // **INICIO DE LA CORRECCIÓN: Panel de Propiedades para 'link'**
                     if (selectedElement.type === 'link') {
                         // 1. Obtener las listas de nodos válidos
-                        const validFromNodes = elements.filter(e => e.type === 'stock' || e.type === 'variable');
+                        // CORRECCIÓN: Añadir 'e.type === "flow"' a validFromNodes
+                        const validFromNodes = elements.filter(e => e.type === 'stock' || e.type === 'variable' || e.type === 'flow');
                         const validToNodes = elements.filter(e => e.type === 'flow' || e.type === 'variable');
 
                         // 2. Generar las opciones para el select "Desde"
@@ -1103,36 +1242,69 @@
                     ModelSimApp.dom.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
                     ModelSimApp.dom.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
                     ModelSimApp.dom.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+                    
+                    // Evento para Zoom
+                    ModelSimApp.dom.canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
 
                     document.addEventListener('keydown', (e) => { 
-                        if ((e.key === 'Delete' || e.key === 'Backspace') && ModelSimApp.state.selectedElement) {
+                        if (e.key === 'Delete' && ModelSimApp.state.selectedElement) {
                             const { selectedElement } = ModelSimApp.state;
                             // Prevenir borrado de texto en inputs
                             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-                            ModelSimApp.state.elements = ModelSimApp.state.elements.filter(el => 
-                                el.id !== selectedElement.id &&
-                                (el.type !== 'link' || (el.from !== selectedElement.id && el.to !== selectedElement.id)) &&
-                                (el.type !== 'flow' || (el.from !== selectedElement.id && el.to !== selectedElement.id))
-                            );
-                            ModelSimApp.state.selectedElement = null;
-                            ModelSimApp.ui.updatePropertiesPanel();
-                            this.draw();
+                            ModelSimApp.canvas.deleteSelectedElement();
                         }
                     });
                 },
 
-                updateCanvasBackground() {
-                    const isDark = ModelSimApp.state.currentTheme === 'dark';
-                    const canvas = ModelSimApp.dom.canvasWrapper;
-                    if (isDark) {
-                        canvas.style.backgroundColor = '#1c2327';
-                        canvas.style.backgroundImage = 'radial-gradient(#3b4b54 1px, transparent 1px)';
-                    } else {
-                        canvas.style.backgroundColor = '#f9fafb'; // bg-gray-50
-                        canvas.style.backgroundImage = 'radial-gradient(#d1d5db 1px, transparent 1px)'; //
+                deleteSelectedElement() {
+                    const { selectedElement, elements } = ModelSimApp.state;
+                    if (!selectedElement) return;
+
+                    // 1. Lista de IDs a eliminar (empezamos con el elemento seleccionado)
+                    let idsToDelete = [selectedElement.id];
+
+                    // 2. Lógica de CASCADA: Si es un flujo, buscar nubes huérfanas
+                    if (selectedElement.type === 'flow') {
+                        const fromNode = elements.find(el => el.id === selectedElement.from);
+                        const toNode = elements.find(el => el.id === selectedElement.to);
+
+                        // Si el origen es una nube, borrarla también
+                        if (fromNode && fromNode.type === 'cloud') {
+                            idsToDelete.push(fromNode.id);
+                        }
+                        // Si el destino es una nube, borrarla también
+                        if (toNode && toNode.type === 'cloud') {
+                            idsToDelete.push(toNode.id);
+                        }
                     }
-                    canvas.style.backgroundSize = '16px 16px';
+
+                    // 3. Ejecutar el borrado y limpiar conexiones rotas
+                    ModelSimApp.state.elements = elements.filter(el => {
+                        // A. Si el elemento está en la lista de eliminación, se va.
+                        if (idsToDelete.includes(el.id)) return false;
+
+                        // B. Limpieza colateral: Borrar Links o Flujos que se conectaban a lo que acabamos de borrar
+                        if (el.type === 'link' || el.type === 'flow') {
+                            if (idsToDelete.includes(el.from) || idsToDelete.includes(el.to)) {
+                                return false; // El elemento apuntaba a algo que ya no existe
+                            }
+                        }
+
+                        return true; // Conservar el resto
+                    });
+
+                    ModelSimApp.state.selectedElement = null;
+                    ModelSimApp.ui.updatePropertiesPanel();
+                    this.draw();
+                },
+
+                updateCanvasBackground() {
+                    // Ya no usamos CSS para el background, se dibuja en drawGrid()
+                    const canvas = ModelSimApp.dom.canvasWrapper;
+                    // Quitamos estilos previos para evitar conflictos
+                    canvas.style.backgroundImage = 'none';
+                    canvas.style.backgroundColor = ModelSimApp.state.currentTheme === 'dark' ? '#1c2327' : '#f9fafb';
                     this.draw();
                 },
 
@@ -1143,19 +1315,102 @@
                     this.draw(); 
                 },
 
-                onMouseDown(e) {
+                resetView() {
+                    ModelSimApp.state.view = {
+                        scale: 1,
+                        offsetX: 0,
+                        offsetY: 0,
+                        isPanning: false,
+                        startPanX: 0,
+                        startPanY: 0
+                    };
+                    this.draw();
+                },
+
+                // Función auxiliar: Coordenadas de Pantalla -> Coordenadas de Mundo (Modelo)
+                screenToWorld(x, y) {
+                    const { view } = ModelSimApp.state;
+                    return {
+                        x: (x - view.offsetX) / view.scale,
+                        y: (y - view.offsetY) / view.scale
+                    };
+                },
+
+                getMousePos(e) { 
+                    const rect = ModelSimApp.dom.canvas.getBoundingClientRect();
+                    // Devuelve coordenadas relativas al canvas (PANTALLA), sin transformar aún
+                    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                },
+
+                handleWheel(e) {
+                    e.preventDefault();
                     const { x, y } = this.getMousePos(e);
-                    const clickedElement = this.getElementAtPos(x, y);
+                    const { view } = ModelSimApp.state;
+
+                    const zoomIntensity = 0.1;
+                    const direction = e.deltaY < 0 ? 1 : -1;
+                    const factor = (1 + zoomIntensity * direction);
+                    
+                    const newScale = Math.max(0.1, Math.min(view.scale * factor, 5)); // Limitar zoom entre 0.1x y 5x
+
+                    // Zoom hacia el puntero del ratón
+                    const worldPosBefore = {
+                        x: (x - view.offsetX) / view.scale,
+                        y: (y - view.offsetY) / view.scale
+                    };
+
+                    view.scale = newScale;
+                    view.offsetX = x - worldPosBefore.x * newScale;
+                    view.offsetY = y - worldPosBefore.y * newScale;
+
+                    this.draw();
+                },
+
+                onMouseDown(e) {
+                    const mouseScreen = this.getMousePos(e);
+                    // Transformar click de pantalla a mundo para detectar elementos
+                    const mouseWorld = this.screenToWorld(mouseScreen.x, mouseScreen.y);
+                    
+                    let clickedElement = this.getElementAtPos(mouseWorld.x, mouseWorld.y);
+                    
+                    // --- REFUERZO DE SEGURIDAD: Bloquear selección de Nubes ---
+                    if (clickedElement && clickedElement.type === 'cloud') {
+                        clickedElement = null;
+                    }
+
                     const { currentTool } = ModelSimApp.state;
 
+                    // CORRECCIÓN: Solo permitir panning (mover lienzo) si estamos en modo 'select' y no clicamos nada.
+                    // Si tenemos otra herramienta (Stock, Variable, etc.), permitimos que pase para crear el elemento.
+                    if (!clickedElement && currentTool === 'select') {
+                        ModelSimApp.state.view.isPanning = true;
+                        ModelSimApp.state.view.startPanX = mouseScreen.x - ModelSimApp.state.view.offsetX;
+                        ModelSimApp.state.view.startPanY = mouseScreen.y - ModelSimApp.state.view.offsetY;
+                        ModelSimApp.dom.canvas.style.cursor = 'grabbing';
+                        
+                        // Deseleccionar si clic en vacío
+                        ModelSimApp.state.selectedElement = null;
+                        ModelSimApp.ui.updatePropertiesPanel();
+                        this.draw();
+                        
+                        return; // Salir, estamos paneando
+                    }
+
+                    // Lógica normal de herramientas usando coordenadas de MUNDO
+                    const x = mouseWorld.x;
+                    const y = mouseWorld.y;
+
                     if (currentTool === 'select') {
-                        ModelSimApp.state.selectedElement = clickedElement;
-                        // **INICIO DE LA CORRECCIÓN 1: Hacer nubes movibles**
-                        if (clickedElement && clickedElement.type !== 'link') { 
-                        // **FIN DE LA CORRECCIÓN 1**
-                            ModelSimApp.state.isDragging = true;
-                            ModelSimApp.state.dragOffsetX = x - clickedElement.x;
-                            ModelSimApp.state.dragOffsetY = y - clickedElement.y;
+                        if (clickedElement) { // Solo seleccionar si hay algo clicado
+                            ModelSimApp.state.selectedElement = clickedElement;
+                            // **INICIO DE LA CORRECCIÓN 1: Hacer nubes movibles**
+                            if (clickedElement.type !== 'link') { 
+                            // **FIN DE LA CORRECCIÓN 1**
+                                ModelSimApp.state.isDragging = true;
+                                ModelSimApp.state.dragOffsetX = x - clickedElement.x;
+                                ModelSimApp.state.dragOffsetY = y - clickedElement.y;
+                                ModelSimApp.dom.canvas.classList.add('interacting');
+                            }
                         }
                     } else if (currentTool === 'stock') {
                         const newElement = this.createElement('stock', x, y);
@@ -1195,25 +1450,37 @@
                             ModelSimApp.state.linkStartElement = null;
                         }
                     } else if (currentTool === 'link') {
-                        // Lógica de "desde" para conector de info
-                        if (clickedElement && (clickedElement.type === 'stock' || clickedElement.type === 'variable')) {
-                            if (!ModelSimApp.state.linkStartElement) {
+                        // REGLA CORREGIDA: Conector entre variables Y flujos
+                        const startElement = ModelSimApp.state.linkStartElement;
+
+                        // Si NO hay un elemento de inicio seleccionado, intentamos seleccionarlo
+                        if (!startElement) {
+                            // AHORA PERMITIMOS 'flow' COMO INICIO
+                            if (clickedElement && (clickedElement.type === 'stock' || clickedElement.type === 'variable' || clickedElement.type === 'flow')) {
                                 ModelSimApp.state.linkStartElement = clickedElement;
                             }
-                        // Lógica de "hasta" para conector de info
-                        } else if (ModelSimApp.state.linkStartElement && clickedElement && (clickedElement.type === 'flow' || clickedElement.type === 'variable')) {
-                            if (ModelSimApp.state.linkStartElement !== clickedElement) {
-                                ModelSimApp.state.elements.push({ 
-                                    id: Date.now(), 
-                                    type: 'link', 
-                                    from: ModelSimApp.state.linkStartElement.id, 
-                                    to: clickedElement.id, 
-                                    name: 'link' 
-                                });
-                                ModelSimApp.state.linkStartElement = null; 
+                        } 
+                        // Si YA hay un elemento de inicio, intentamos conectar
+                        else {
+                            // Permitimos conectar a 'flow' O 'variable'
+                            if (clickedElement && (clickedElement.type === 'flow' || clickedElement.type === 'variable')) {
+                                if (startElement.id !== clickedElement.id) {
+                                    // Evitar ciclos directos o conexiones extrañas si es necesario, 
+                                    // pero por ahora permitimos la conexión genérica.
+                                    ModelSimApp.state.elements.push({ 
+                                        id: Date.now(), 
+                                        type: 'link', 
+                                        from: startElement.id, 
+                                        to: clickedElement.id, 
+                                        name: 'link' 
+                                    });
+                                    // Conexión exitosa, reseteamos el inicio
+                                    ModelSimApp.state.linkStartElement = null; 
+                                }
+                            } else {
+                                // Si se hace clic en la nada o en un elemento inválido (ej. stock como destino de info), cancelamos
+                                ModelSimApp.state.linkStartElement = null;
                             }
-                        } else { 
-                            ModelSimApp.state.linkStartElement = null; 
                         }
                     }
                     ModelSimApp.ui.updatePropertiesPanel();
@@ -1221,16 +1488,35 @@
                 },
 
                 onMouseMove(e) {
+                    const mouseScreen = this.getMousePos(e);
+
+                    // Lógica de Panning
+                    if (ModelSimApp.state.view.isPanning) {
+                        ModelSimApp.state.view.offsetX = mouseScreen.x - ModelSimApp.state.view.startPanX;
+                        ModelSimApp.state.view.offsetY = mouseScreen.y - ModelSimApp.state.view.startPanY;
+                        this.draw();
+                        return;
+                    }
+
+                    // Lógica de Arrastre de Elementos
                     if (ModelSimApp.state.isDragging && ModelSimApp.state.selectedElement) {
-                        const { x, y } = this.getMousePos(e);
-                        ModelSimApp.state.selectedElement.x = x - ModelSimApp.state.dragOffsetX;
-                        ModelSimApp.state.selectedElement.y = y - ModelSimApp.state.dragOffsetY;
+                        // Convertir a coordenadas de mundo para mover el elemento correctamente
+                        const mouseWorld = this.screenToWorld(mouseScreen.x, mouseScreen.y);
+                        ModelSimApp.state.selectedElement.x = mouseWorld.x - ModelSimApp.state.dragOffsetX;
+                        ModelSimApp.state.selectedElement.y = mouseWorld.y - ModelSimApp.state.dragOffsetY;
                         this.draw();
                     }
                 },
 
                 onMouseUp() {
-                    ModelSimApp.state.isDragging = false;
+                    if (ModelSimApp.state.view.isPanning) {
+                        ModelSimApp.state.view.isPanning = false;
+                        ModelSimApp.dom.canvas.style.cursor = 'grab';
+                    }
+                    if (ModelSimApp.state.isDragging) {
+                        ModelSimApp.state.isDragging = false;
+                        ModelSimApp.dom.canvas.classList.remove('interacting');
+                    }
                 },
 
                 async clear() {
@@ -1246,14 +1532,60 @@
                     }
                 },
 
+                drawGrid(ctx, width, height) {
+                    const { view } = ModelSimApp.state;
+                    const isDark = ModelSimApp.state.currentTheme === 'dark';
+                    
+                    // Configuración de rejilla
+                    const gridSize = 20; // Tamaño base de la celda
+                    const gridColor = isDark ? '#3b4b54' : '#d1d5db';
+                    const bgColor = isDark ? '#1c2327' : '#f9fafb';
+
+                    // Llenar fondo
+                    // Usamos coordenadas transformadas inversas para cubrir todo el viewport visible
+                    // La transformación ya está aplicada en draw(), así que dibujamos en coordenadas de "mundo"
+                    // Pero necesitamos saber qué parte del mundo es visible.
+                    const left = -view.offsetX / view.scale;
+                    const top = -view.offsetY / view.scale;
+                    const right = (width - view.offsetX) / view.scale;
+                    const bottom = (height - view.offsetY) / view.scale;
+
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(left, top, right - left, bottom - top);
+
+                    // Dibujar puntos
+                    ctx.fillStyle = gridColor;
+                    
+                    // Calcular inicio y fin alineados a la rejilla
+                    const startX = Math.floor(left / gridSize) * gridSize;
+                    const startY = Math.floor(top / gridSize) * gridSize;
+
+                    for (let x = startX; x < right; x += gridSize) {
+                        for (let y = startY; y < bottom; y += gridSize) {
+                            // Dibujar un pequeño círculo o cuadrado para el punto
+                            // Optimizacion: Solo dibujar si está dentro de la vista (el bucle for ya hace esto aprox)
+                            ctx.fillRect(x, y, 1.5 / view.scale, 1.5 / view.scale); // Escalar el punto inversamente para que se mantenga nítido o constante
+                        }
+                    }
+                },
                 
                 draw() {
                     const { ctx, canvas } = ModelSimApp.dom;
-                    const { elements, selectedElement } = ModelSimApp.state;
-                    const isDark = ModelSimApp.state.currentTheme === 'dark';
-
+                    const { elements, selectedElement, view } = ModelSimApp.state;
+                    
+                    // Limpiar todo el canvas (pantalla)
+                    ctx.setTransform(1, 0, 0, 1, 0, 0); // Resetear transformación para limpiar
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     
+                    // Aplicar transformación de cámara (Pan y Zoom)
+                    ctx.save();
+                    ctx.translate(view.offsetX, view.offsetY);
+                    ctx.scale(view.scale, view.scale);
+
+                    // Dibujar Rejilla
+                    this.drawGrid(ctx, canvas.width, canvas.height);
+                    
+                    // Dibujar Elementos
                     elements.filter(e => e.type === 'flow').forEach(flow => this.drawFlowPipe(flow));
                     elements.filter(e => e.type === 'link').forEach(link => this.drawInfoLink(link));
                     
@@ -1278,6 +1610,8 @@
                          this.drawFlowValve(flow);
                          ctx.restore();
                     });
+
+                    ctx.restore(); // Restaurar transformación
                 },
 
                 drawStock(el) {
@@ -1425,20 +1759,44 @@
                     const to = elements.find(e => e.id === link.to);
                     if (!from || !to) return; 
 
-                    const color = '#60a5fa'; // Azul para links de info
+                    const color = '#60a5fa'; 
                     const selectedColor = '#1193d4';
 
+                    // Usamos los centros exactos para calcular el ángulo
                     const angle = Math.atan2(to.y - from.y, to.x - from.x);
+                    let fromX, fromY;
                     let toX, toY;
 
+                    // Calcular punto de inicio (fromX, fromY) en el borde del elemento
+                    if (from.type === 'stock') {
+                         const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
+                        let exitX, exitY;
+                        if (Math.abs(dy / dx) < 1 / ratio) { exitX = (dx > 0) ? 40 : -40; exitY = dy * (exitX / dx); }
+                        else { exitY = (dy > 0) ? 25 : -25; exitX = dx * (exitY / dy); }
+                        fromX = from.x + exitX; fromY = from.y + exitY;
+                    } else if (from.type === 'flow' || from.type === 'variable') {
+                        // Radio estricto para morder la Válvula (15) o Variable (25)
+                        const radius = from.type === 'flow' ? 15 : 25;
+                        fromX = from.x + radius * Math.cos(angle);
+                        fromY = from.y + radius * Math.sin(angle);
+                    } else {
+                        fromX = from.x; fromY = from.y;
+                    }
+
+                    // Calcular punto de destino (toX, toY) en el borde del elemento
                     if (to.type === 'stock') {
                         const dx = to.x - from.x, dy = to.y - from.y, ratio = 40 / 25;
                         let exitX, exitY;
                         if (Math.abs(dy / dx) < 1 / ratio) { exitX = (dx > 0) ? -40 : 40; exitY = dy * (exitX / dx); }
                         else { exitY = (dy > 0) ? -25 : 25; exitX = dx * (exitY / dy); }
                         toX = to.x + exitX; toY = to.y + exitY;
-                    } else if (to.type === 'flow' || to.type === 'variable') {
-                        const radius = to.type === 'flow' ? 15 : 25;
+                    } else if (to.type === 'variable') { 
+                        const radius = 25;
+                        toX = to.x - radius * Math.cos(angle);
+                        toY = to.y - radius * Math.sin(angle);
+                    } else if (to.type === 'flow') { 
+                        // ALINEACIÓN ESTRICTA A LA VÁLVULA
+                        const radius = 15; 
                         toX = to.x - radius * Math.cos(angle);
                         toY = to.y - radius * Math.sin(angle);
                     } else {
@@ -1446,12 +1804,18 @@
                     }
                     
                     ctx.beginPath();
-                    ctx.moveTo(from.x, from.y);
+                    ctx.moveTo(fromX, fromY); 
                     
-                    const midX = (from.x + toX) / 2;
-                    const midY = (from.y + toY) / 2;
-                    const cpX = midX + (from.y - toY) * 0.3;
-                    const cpY = midY + (toX - from.x) * 0.3;
+                    // --- MEJORA VISUAL DE CURVA ---
+                    // Reducimos la curvatura para que la línea sea más directa y no parezca irse a las nubes
+                    // Si están alineados verticalmente (común en flujos), reducimos aún más la curvatura
+                    const isVertical = Math.abs(from.y - to.y) > Math.abs(from.x - to.x);
+                    const curveIntensity = isVertical ? 0.1 : 0.2; // Mucho más suave que el 0.3 original
+
+                    const midX = (fromX + toX) / 2;
+                    const midY = (fromY + toY) / 2;
+                    const cpX = midX + (from.y - to.y) * curveIntensity; // Nota: Usamos from.y/to.y originales para la curvatura relativa
+                    const cpY = midY + (to.x - from.x) * curveIntensity;
                     ctx.quadraticCurveTo(cpX, cpY, toX, toY);
                     
                     ctx.strokeStyle = (link === selectedElement) ? selectedColor : color;
@@ -1461,6 +1825,7 @@
                     ctx.setLineDash([]);
 
                     ctx.save();
+                    // Recalcular ángulo final basado en la curva para orientar la punta
                     const angleEnd = Math.atan2(toY - cpY, toX - cpX);
                     ctx.translate(toX, toY);
                     ctx.rotate(angleEnd);
@@ -1497,6 +1862,7 @@
 
                 getMousePos(e) { 
                     const rect = ModelSimApp.dom.canvas.getBoundingClientRect();
+                    // Devuelve coordenadas relativas al canvas (PANTALLA), sin transformar aún
                     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
                 },
                 
@@ -1512,10 +1878,8 @@
                             clickedElement = el; break;
                         } else if (el.type === 'variable' && (Math.sqrt((x - el.x) ** 2 + (y - el.y) ** 2) <= 25)) {
                             clickedElement = el; break;
-                        // **INICIO DE LA CORRECCIÓN 3: Ajustar radio de clic de nube**
-                        } else if (el.type === 'cloud' && (Math.sqrt((x - el.x) ** 2 + (y - el.y) ** 2) <= 20)) {
-                        // **FIN DE LA CORRECCIÓN 3**
-                            clickedElement = el; break;
+                        
+                        // --- CORRECCIÓN: Omitir deteccion de nubes. El bloque "else if cloud" ha sido eliminado. ---
                         }
                     }
                     if (clickedElement) return clickedElement; 
@@ -1549,7 +1913,8 @@
                             toX = to.x + exitX; toY = to.y + exitY;
                         } else if (to.type === 'flow' || to.type === 'variable') {
                             const radius = to.type === 'flow' ? 15 : 25;
-                            toX = to.x - radius * Math.cos(angle); toY = to.y - radius * Math.sin(angle);
+                            toX = to.x - radius * Math.cos(angle);
+                            toY = to.y - radius * Math.sin(angle);
                         } else {
                             toX = to.x; toY = to.y;
                         }
@@ -1603,6 +1968,36 @@
                     return Array.from(dependencies);
                 },
 
+                validateConsistency(elements) {
+                    const errors = [];
+                    const nameMap = new Map(elements.map(e => [e.name, e]));
+
+                    elements.forEach(el => {
+                        if (el.type === 'variable' || el.type === 'flow') {
+                            // 1. Encontrar variables usadas en la ecuación
+                            const dependencies = this.findDependencies(el.equation, Array.from(nameMap.keys()));
+                            
+                            // 2. Encontrar conexiones visuales entrantes
+                            const incomingLinkIds = new Set(
+                                elements
+                                    .filter(link => link.type === 'link' && link.to === el.id)
+                                    .map(link => link.from)
+                            );
+
+                            dependencies.forEach(depName => {
+                                const sourceEl = nameMap.get(depName);
+                                if (!sourceEl) return; 
+                                
+                                // Si la fuente no está conectada visualmente, es un error de consistencia
+                                if (!incomingLinkIds.has(sourceEl.id)) {
+                                    errors.push(`'${el.name}' usa '${depName}' en su ecuación, pero no hay un conector visual entre ellos.`);
+                                }
+                            });
+                        }
+                    });
+                    return errors;
+                },
+
                 determineCalculationOrder(stocks, variables, flows) {
                     const calcElements = [...variables, ...flows];
                     const elementMap = new Map();
@@ -1654,9 +2049,19 @@
                     return sortedList;
                 },
 
-                run() {
+                async run() { // Convertir a async para usar await en showConfirm
                      try {
                         const { elements } = ModelSimApp.state;
+                        
+                        // --- VALIDACIÓN DE CONSISTENCIA (MODIFICADO: ADVERTENCIA) ---
+                        const consistencyErrors = this.validateConsistency(elements);
+                        if (consistencyErrors.length > 0) {
+                            // En lugar de lanzar error, pedimos confirmación
+                            const message = `Advertencia de consistencia:\n- ${consistencyErrors.join('\n- ')}\n\n¿Deseas ejecutar la simulación de todos modos?`;
+                            const proceed = await ModelSimApp.ui.showConfirm(message, "Advertencia Visual");
+                            if (!proceed) return; // Cancelar si el usuario dice que no
+                        }
+
                         const startTime = parseFloat(ModelSimApp.dom.simStartTimeInput.value) || 0;
                         const endTime = parseFloat(ModelSimApp.dom.simEndTimeInput.value) || 100;
                         const DT = parseFloat(ModelSimApp.dom.simDtInput.value) || 1;
@@ -1676,7 +2081,7 @@
                         ModelSimApp.ui.displayResults(ModelSimApp.state.simulationRuns);
 
                     } catch (error) {
-                        ModelSimApp.ui.showAlert(`Error en la simulación: ${error.message}`, 'Error de Simulación');
+                        ModelSimApp.ui.showAlert(`${error.message}`, 'Error de Simulación'); // Mensaje directo sin prefijo extra
                         console.error(error);
                     }
                 },
@@ -1699,6 +2104,8 @@
                         
                         const currentStateSnapshot = { ...simState };
                         
+                        // stateForFlowCalc se usará como el "pizarrón" donde anotamos los valores
+                        // a medida que los calculamos en este paso de tiempo.
                         const stateForFlowCalc = { ...currentStateSnapshot };
                         const stateForResults = { ...currentStateSnapshot };
                         const flowValues = {};
@@ -1706,7 +2113,10 @@
                         for (const el of calculationOrder) {
                             let val;
                             if (el.type === 'variable') {
-                                val = this.evalEquation(el.equation, currentStateSnapshot);
+                                // CORRECCIÓN AQUÍ: Usar stateForFlowCalc en lugar de currentStateSnapshot
+                                // Esto permite que Variable B vea el valor recién calculado de Variable A
+                                val = this.evalEquation(el.equation, stateForFlowCalc);
+                                
                                 if (el.rounding === 'entero') val = Math.round(val);
                                 stateForFlowCalc[el.name] = val; 
                                 stateForResults[el.name] = val; 
@@ -1714,8 +2124,13 @@
                             } else if (el.type === 'flow') {
                                 val = this.evalEquation(el.equation, stateForFlowCalc);
                                 if (el.rounding === 'entero') val = Math.round(val);
+                                
                                 flowValues[el.name] = val; 
                                 stateForResults[el.name] = val; 
+                                
+                                // --- CORRECCIÓN FINAL ---
+                                // Permitir que este flujo sea usado como dato por otros flujos o variables subsecuentes.
+                                stateForFlowCalc[el.name] = val; 
                             }
                         }
                         
@@ -1756,27 +2171,27 @@
                     });
                 },
 
-                saveModel(name, data) {
+                saveModel(name, data, settings) {
                     return new Promise((resolve, reject) => {
                         const { db } = ModelSimApp.state;
                         if (!db) return reject("La base de datos no está inicializada.");
                         
                         const transaction = db.transaction([this.STORE_NAME], 'readwrite');
                         const store = transaction.objectStore(this.STORE_NAME);
-                        const request = store.add({ name, data: JSON.stringify(data) });
+                        const request = store.add({ name, data: JSON.stringify(data), settings: JSON.stringify(settings) });
                         request.onsuccess = () => resolve(request.result); 
                         request.onerror = event => reject(event.target.error);
                     });
                 },
 
-                updateModel(id, name, data) {
+                updateModel(id, name, data, settings) {
                     return new Promise((resolve, reject) => {
                         const { db } = ModelSimApp.state;
                         if (!db) return reject("La base de datos no está inicializada.");
                         
                         const transaction = db.transaction([this.STORE_NAME], 'readwrite');
                         const store = transaction.objectStore(this.STORE_NAME);
-                        const request = store.put({ id: id, name: name, data: JSON.stringify(data) }); 
+                        const request = store.put({ id: id, name: name, data: JSON.stringify(data), settings: JSON.stringify(settings) }); 
                         request.onsuccess = () => resolve();
                         request.onerror = event => reject(event.target.error);
                     });
@@ -1839,6 +2254,19 @@
                             
                             modelEl.onclick = () => {
                                 ModelSimApp.state.elements = JSON.parse(model.data);
+                                
+                                // Cargar configuración si existe
+                                if (model.settings) {
+                                    try {
+                                        const settings = JSON.parse(model.settings);
+                                        if (settings.startTime !== undefined) ModelSimApp.dom.simStartTimeInput.value = settings.startTime;
+                                        if (settings.endTime !== undefined) ModelSimApp.dom.simEndTimeInput.value = settings.endTime;
+                                        if (settings.dt !== undefined) ModelSimApp.dom.simDtInput.value = settings.dt;
+                                    } catch (e) {
+                                        console.warn("No se pudo parsear la configuración del modelo:", e);
+                                    }
+                                }
+
                                 ModelSimApp.state.selectedElement = null;
                                 ModelSimApp.state.currentModel = { id: model.id, name: model.name };
                                 ModelSimApp.dom.updateModelBtn.disabled = false;
