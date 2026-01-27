@@ -7,7 +7,13 @@
     
     <!-- Script de Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+    <script src="tutorial.js"></script>
+    <!-- Estilos de Driver.js -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
+
+    <!-- Script de Driver.js -->
+    <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
+
     <!-- Configuración de Tailwind para modo 'class' -->
     <script>
         tailwind.config = {
@@ -130,6 +136,10 @@
                 <div id="currentModelNameDisplay" class="text-gray-500 dark:text-gray-400 font-medium text-sm"></div>
             </div>
             <div class="flex items-center gap-3">
+                <button id="startTutorialBtn" class="flex items-center justify-center rounded-md h-10 px-3 bg-yellow-500 hover:bg-yellow-600 text-white transition-colors gap-2" title="Iniciar Tutorial">
+                    <span class="material-symbols-outlined text-sm">help</span>
+                    <span class="text-sm font-bold hidden sm:inline">Ayuda</span>
+                </button>
                  <button id="updateModelBtn" class="flex items-center gap-2 min-w-[84px] cursor-pointer justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-200 dark:bg-[#283339] hover:bg-gray-300 dark:hover:bg-[#3b4b54] text-gray-800 dark:text-white text-sm font-bold leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                     <span class="material-symbols-outlined">save</span>
                     <span class="truncate">Guardar</span>
@@ -153,7 +163,7 @@
         <div class="flex-grow flex overflow-hidden">
             <div class="grid grid-cols-12 gap-8 w-full p-8 h-full">
                 <!-- Toolbar / Components -->
-                <aside class="col-span-2 flex flex-col h-full max-h-full overflow-hidden">
+                <aside id="toolsPanel" class="col-span-2 flex flex-col h-full max-h-full overflow-hidden">
                     
                     <!-- Lista de Componentes con Scroll Independiente -->
                     <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
@@ -205,7 +215,7 @@
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-gray-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">Modeling Canvas</h2>
                         
-                        <div class="flex items-center gap-4">
+                        <div id="simControls" class="flex items-center gap-4">
                             <h2 class="sr-only">Simulación</h2>
                             <div class="flex items-center gap-2">
                                 <label for="simStartTime" class="block text-sm font-medium text-gray-600 dark:text-gray-300">T. Inicial:</label>
@@ -468,7 +478,16 @@
                     ModelSimApp.dom.runSimBtn.addEventListener('click', () => ModelSimApp.simulation.run());
                     ModelSimApp.dom.clearCanvasBtn.addEventListener('click', () => ModelSimApp.canvas.clear());
                     ModelSimApp.dom.resetViewBtn.addEventListener('click', () => ModelSimApp.canvas.resetView());
-                    
+                    // --- NUEVO CÓDIGO PARA EL TUTORIAL ---
+                    document.getElementById('startTutorialBtn').addEventListener('click', () => {
+                        if (window.ModelSimTutorial) {
+                            const driverObj = window.ModelSimTutorial.createDriver();
+                            if (driverObj) driverObj.drive();
+                        } else {
+                            console.error("El script tutorial.js no se ha cargado correctamente.");
+                        }
+                    });
+                    // -------------------------------------
                     // Lógica para el botón "Borrar Elemento" en móvil
                     if(ModelSimApp.dom.deleteElementBtn) {
                         ModelSimApp.dom.deleteElementBtn.addEventListener('click', () => {
